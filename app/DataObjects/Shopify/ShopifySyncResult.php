@@ -13,8 +13,8 @@ namespace App\DataObjects\Shopify;
 final readonly class ShopifySyncResult
 {
     /**
-     * @param  array<int, string>  $variantGids por `sku` => GID
-     * @param  array<int, string>  $mediaGids por `sha256` => GID
+     * @param  array<int, string>  $variantGids  por `sku` => GID
+     * @param  array<int, string>  $mediaGids  por `sha256` => GID
      * @param  array<string, mixed>  $raw
      */
     public function __construct(
@@ -24,8 +24,7 @@ final readonly class ShopifySyncResult
         public array $mediaGids = [],
         public ?string $userErrors = null,
         public array $raw = [],
-    ) {
-    }
+    ) {}
 
     public function numericId(): ?string
     {

@@ -9,9 +9,7 @@ use App\Support\Security\SecretRedactor;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
-use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
-use Throwable;
 
 /**
  * Transporte GraphQL contra la API de administración de Shopify (RFC-0004).
@@ -26,9 +24,7 @@ use Throwable;
  */
 class ShopifyGraphQlClient
 {
-    public function __construct(private readonly SecretRedactor $redactor)
-    {
-    }
+    public function __construct(private readonly SecretRedactor $redactor) {}
 
     public function isConfigured(): bool
     {
@@ -168,10 +164,10 @@ class ShopifyGraphQlClient
         $token = (string) config('product-studio.shopify.access_token');
 
         return Http::withHeaders([
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-            ])
+            'X-Shopify-Access-Token' => $token,
+            'Content-Type' => 'application/json',
+            'Accept' => 'application/json',
+        ])
             ->timeout((int) config('product-studio.shopify.timeout', 30))
             ->connectTimeout((int) config('product-studio.shopify.connect_timeout', 10))
             // El throttling de Shopify se trata como recuperable: el trabajo se

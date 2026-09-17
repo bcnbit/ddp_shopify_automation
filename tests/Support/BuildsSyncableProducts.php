@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Support;
 
 use App\Enums\Locale;
-use App\Enums\ProductStatus;
 use App\Models\Product;
 use App\Models\ProductContent;
 use App\Models\ProductMedia;
@@ -77,6 +76,7 @@ trait BuildsSyncableProducts
             'seo_description' => 'Camiseta Marina de algodón peinado, corte regular y suave al tacto. Una prenda sencilla para el día a día junto al mar.',
             'tags_json' => ['camiseta', 'algodón', 'marina', 'verano', 'dies de platja'],
         ]);
+
         return $product->refresh();
     }
 
@@ -135,6 +135,7 @@ trait BuildsSyncableProducts
             },
         ]);
     }
+
     /**
      * Variables GraphQL de una petición, como array.
      *

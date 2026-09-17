@@ -43,8 +43,7 @@ final readonly class ShopifyProductPayload
         public ?string $seoDescription = null,
         public ?string $categoryTaxonomyId = null,
         public array $metafields = [],
-    ) {
-    }
+    ) {}
 
     /**
      * Construye la carga útil desde una ficha local.

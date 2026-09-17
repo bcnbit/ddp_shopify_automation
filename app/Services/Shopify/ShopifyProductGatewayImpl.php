@@ -30,8 +30,7 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
     public function __construct(
         private readonly ShopifyGraphQlClient $client,
         private readonly ShopifyFileUploader $uploader,
-    ) {
-    }
+    ) {}
 
     public function isConfigured(): bool
     {
@@ -196,6 +195,7 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
 
         return null;
     }
+
     /**
      * Sube los medios que aún no tienen GID y espera a que estén listos.
      *
@@ -529,7 +529,6 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
 
         return $gids;
     }
-
 
     /**
      * @param  array<string, mixed>  $payload

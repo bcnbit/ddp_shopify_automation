@@ -36,7 +36,6 @@ class ShopifyGatewayTest extends TestCase
         return app(ShopifyProductGatewayImpl::class);
     }
 
-
     public function test_envia_el_producto_siempre_como_borrador(): void
     {
         $product = $this->syncableProduct();

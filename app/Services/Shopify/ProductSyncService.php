@@ -45,8 +45,7 @@ class ProductSyncService
     public function __construct(
         private readonly ShopifyProductGateway $gateway,
         private readonly ActivityRecorder $recorder,
-    ) {
-    }
+    ) {}
 
     /**
      * Encola el envío como borrador. Es lo que dispara el botón del panel.

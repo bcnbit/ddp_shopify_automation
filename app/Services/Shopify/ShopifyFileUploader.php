@@ -24,9 +24,7 @@ use Throwable;
  */
 class ShopifyFileUploader
 {
-    public function __construct(private readonly ShopifyGraphQlClient $client)
-    {
-    }
+    public function __construct(private readonly ShopifyGraphQlClient $client) {}
 
     /**
      * Sube un archivo local y devuelve su GID de Shopify.

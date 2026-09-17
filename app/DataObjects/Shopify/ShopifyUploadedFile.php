@@ -16,6 +16,5 @@ final readonly class ShopifyUploadedFile
         public string $gid,
         public string $filename,
         public ?string $resourceUrl = null,
-    ) {
-    }
+    ) {}
 }

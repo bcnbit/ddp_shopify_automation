@@ -147,7 +147,5 @@ final class ShopifyOperations
     GQL;
 
     /** No instanciable: sólo agrupa documentos. */
-    private function __construct()
-    {
-    }
+    private function __construct() {}
 }
