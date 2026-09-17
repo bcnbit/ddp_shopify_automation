@@ -89,28 +89,64 @@ class Product extends Model
         return $this->belongsTo(User::class, 'approved_by');
     }
 
-    /** @return HasMany<ProductVariant, $this> */
+    /**
+     * Variantes vendibles de la ficha.
+     *
+     * `chaperone()` enlaza cada variante con su ficha al cargarla, de modo que
+     * `ProductVariant::effectivePrice()` puede leer el precio de la ficha sin
+     * provocar una carga diferida. Sin esto, validar una variante sin precio
+     * propio fallaba con «Attempted to lazy load [product]» cuando las cargas
+     * diferidas están desactivadas (entorno de desarrollo), y además añadía una
+     * consulta por variante.
+     *
+     * @return HasMany<ProductVariant, $this>
+     */
     public function variants(): HasMany
     {
-        return $this->hasMany(ProductVariant::class)->orderBy('position');
+        return $this->hasMany(ProductVariant::class)
+            ->orderBy('position')
+            ->chaperone('product');
     }
 
-    /** @return HasMany<ProductMedia, $this> */
+    /**
+     * Imágenes de la ficha.
+     *
+     * `chaperone('product')` devuelve cada imagen con su ficha ya enlazada. Es
+     * imprescindible y no una optimización: las Policies autorizan por fila
+     * (`$media->product`), y Filament carga las filas de la tabla de golpe. Sin
+     * el enlace, cada comprobación de permiso intentaba una carga diferida y el
+     * panel fallaba con «Attempted to lazy load [product]» en desarrollo.
+     *
+     * @return HasMany<ProductMedia, $this>
+     */
     public function media(): HasMany
     {
-        return $this->hasMany(ProductMedia::class)->orderBy('sort_order');
+        return $this->hasMany(ProductMedia::class)
+            ->orderBy('sort_order')
+            ->chaperone('product');
     }
 
-    /** @return HasMany<ProductContent, $this> */
+    /**
+     * Versiones de contenido de la ficha. `chaperone('product')` por el mismo
+     * motivo que en `media()`: ProductContentPolicy autoriza por fila.
+     *
+     * @return HasMany<ProductContent, $this>
+     */
     public function contents(): HasMany
     {
-        return $this->hasMany(ProductContent::class);
+        return $this->hasMany(ProductContent::class)->chaperone('product');
     }
 
-    /** @return HasMany<SyncAttempt, $this> */
+    /**
+     * Intentos de sincronización. `chaperone('product')` por el mismo motivo que
+     * en `media()`: SyncAttemptPolicy autoriza por fila y el panel de errores
+     * las muestra en tabla.
+     *
+     * @return HasMany<SyncAttempt, $this>
+     */
     public function syncAttempts(): HasMany
     {
-        return $this->hasMany(SyncAttempt::class);
+        return $this->hasMany(SyncAttempt::class)->chaperone('product');
     }
 
     /** @return HasMany<ActivityLog, $this> */

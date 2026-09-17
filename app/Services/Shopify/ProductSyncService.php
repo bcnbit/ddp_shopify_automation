@@ -307,8 +307,30 @@ class ProductSyncService
             throw new RuntimeException('Shopify no está configurado. Avisa al administrador técnico.');
         }
 
+        // Un envío en curso no es un error de la ficha: decirle a la persona que
+        // «tiene errores bloqueantes» cuando en realidad ya se está enviando la
+        // llevaría a buscar un problema que no existe. Un doble clic cae aquí.
+        if ($product->status === ProductStatus::Syncing) {
+            throw new RuntimeException(
+                'Esta ficha ya se está enviando a Shopify. Espera a que termine para volver a intentarlo.'
+            );
+        }
+
         if (! ProductReadiness::canSendToShopify($product)) {
-            throw new RuntimeException('La ficha tiene errores bloqueantes que impiden enviarla.');
+            // Se distinguen los dos motivos posibles: que falten datos o que el
+            // estado no permita enviarla todavía.
+            $validation = ProductReadiness::validation($product);
+
+            if ($validation->fails()) {
+                throw new RuntimeException(
+                    'La ficha tiene errores bloqueantes que impiden enviarla: '
+                    .implode(' ', array_slice($validation->blockingMessages(), 0, 3))
+                );
+            }
+
+            throw new RuntimeException(
+                "La ficha todavía no puede enviarse desde el estado «{$product->status->label()}»."
+            );
         }
     }
 }

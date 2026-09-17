@@ -6,7 +6,9 @@ namespace Tests\Feature\Products;
 
 use App\Models\Product;
 use App\Models\ProductMedia;
+use App\Policies\ProductMediaPolicy;
 use App\Services\Products\ProductMediaService;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -204,6 +206,47 @@ class ProductMediaTest extends TestCase
         $this->assertSame($foreignOrderBefore, $foreign->refresh()->sort_order);
         // La propia acaba en la posición que permite el conjunto filtrado.
         $this->assertSame(0, $mine->refresh()->sort_order);
+    }
+
+    /**
+     * Las Policies autorizan por fila, y Filament carga las imágenes en tabla.
+     *
+     * Sin el enlace al padre, comprobar el permiso de cada imagen era una carga
+     * diferida: en desarrollo eso revienta con «Attempted to lazy load [product]
+     * on model [App\Models\ProductMedia]» justo al añadir la segunda imagen.
+     *
+     * Se usan **dos** imágenes a propósito: Eloquent sólo propaga la prohibición
+     * de carga diferida cuando la consulta hidrata más de un registro, así que
+     * con una sola el fallo no se reproduciría.
+     */
+    public function test_autorizar_las_imagenes_no_dispara_carga_diferida(): void
+    {
+        Model::preventLazyLoading();
+
+        try {
+            $operadora = $this->operadora();
+            $product = Product::factory()->create([
+                'created_by' => $operadora->getKey(),
+                'price' => 30.00,
+            ]);
+
+            ProductMedia::factory()->forProduct($product)->primary()->create();
+            ProductMedia::factory()->forProduct($product)->create();
+
+            $policy = new ProductMediaPolicy;
+            $loaded = $product->media()->get();
+
+            $this->assertCount(2, $loaded);
+
+            foreach ($loaded as $media) {
+                // Es lo que hace Filament al pintar cada fila de la tabla.
+                $this->assertTrue($policy->view($operadora, $media));
+                $this->assertTrue($policy->update($operadora, $media));
+                $this->assertTrue($policy->delete($operadora, $media));
+            }
+        } finally {
+            Model::preventLazyLoading(false);
+        }
     }
 
     public function test_actualiza_el_alt(): void

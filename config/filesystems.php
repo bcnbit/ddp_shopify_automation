@@ -33,6 +33,11 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
+            // URI propia. Varios discos locales con serve compartían la misma
+            // URI /storage, competían por la misma ruta y sólo sobrevivía una:
+            // temporaryUrl() del disco de medios fallaba con «Route
+            // [storage.media] not defined» y las imágenes del panel salían rotas.
+            'url' => '/storage/private',
             'serve' => true,
             'throw' => false,
             'report' => false,
@@ -54,6 +59,10 @@ return [
         'media' => [
             'driver' => env('PRODUCT_STUDIO_MEDIA_DRIVER', 'local'),
             'root' => storage_path('app/media'),
+            // URI propia: es la que da nombre a la ruta storage.media, que
+            // necesitan las URLs firmadas de los originales privados.
+            // Si se migra a S3, usar el disco media-s3 (RFC-0007).
+            'url' => '/storage/media',
             'serve' => true,
             'throw' => false,
             'report' => false,
@@ -66,6 +75,8 @@ return [
         'media-derived' => [
             'driver' => env('PRODUCT_STUDIO_DERIVED_DRIVER', 'local'),
             'root' => storage_path('app/media-derived'),
+            // URI propia, por el mismo motivo que el disco media.
+            'url' => '/storage/media-derived',
             'serve' => true,
             'throw' => false,
             'report' => false,

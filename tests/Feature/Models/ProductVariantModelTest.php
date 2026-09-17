@@ -7,6 +7,8 @@ namespace Tests\Feature\Models;
 use App\Enums\InventoryPolicy;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Support\Products\ProductReadiness;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -80,6 +82,46 @@ class ProductVariantModelTest extends TestCase
         $variant = ProductVariant::factory()->forProduct($product)->create(['price' => null]);
 
         $this->assertSame('30.00', $variant->effectivePrice());
+    }
+
+    /**
+     * Heredar el precio de la ficha no puede exigir cargarla aparte.
+     *
+     * En desarrollo la carga diferida está prohibida, así que validar una ficha
+     * cuyas variantes no llevan precio propio reventaba el panel con
+     * «Attempted to lazy load [product]». Se reproducía al abrir una ficha real:
+     * `ProductValidator` recorre las variantes y llama a `effectivePrice()`.
+     *
+     * La prueba necesita **dos** variantes a propósito: Eloquent sólo propaga la
+     * prohibición de carga diferida cuando la consulta hidrata más de un
+     * registro (`Builder::hydrate`), así que con una sola variante el fallo no
+     * se manifestaría y la prueba no protegería nada.
+     */
+    public function test_hereda_el_precio_de_la_ficha_sin_disparar_carga_diferida(): void
+    {
+        Model::preventLazyLoading();
+
+        try {
+            $product = Product::factory()->create(['price' => 30.00]);
+
+            ProductVariant::factory()->forProduct($product)
+                ->combination('Blanco', 'S')->create(['sku' => 'LD-1', 'price' => null]);
+            ProductVariant::factory()->forProduct($product)
+                ->combination('Blanco', 'M')->create(['sku' => 'LD-2', 'price' => null]);
+
+            $loaded = Product::with(['variants', 'media', 'contents'])->findOrFail($product->getKey());
+
+            $this->assertCount(2, $loaded->variants);
+
+            foreach ($loaded->variants as $variant) {
+                $this->assertSame('30.00', $variant->effectivePrice());
+            }
+
+            // Y el validador, que es quien recorría las variantes en el panel.
+            $this->assertNotNull(ProductReadiness::validation($loaded));
+        } finally {
+            Model::preventLazyLoading(false);
+        }
     }
 
     public function test_prioriza_el_precio_de_la_variante(): void
