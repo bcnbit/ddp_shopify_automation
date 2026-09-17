@@ -1,13 +1,19 @@
 # Handoff — Shopify Product Studio
 
-Documento de traspaso para una sesión nueva. Resume el estado **real y verificado**
-del repositorio, las decisiones tomadas, los errores ya corregidos y lo pendiente.
+Documento de traspaso. Resume el estado **real y verificado** del repositorio, cómo
+funciona lo que ya existe, y qué falta.
+
+Está pensado para **revisar funcionalidades y planificar nuevas**: la **sección 5** inventaría
+lo que hace hoy la aplicación, la **6** mapea el código, y la **12** lista los huecos por
+donde ampliarla.
 
 - **Repositorio:** `D:\laragon\www\ddpshopify`
-- **Fecha del traspaso:** 2026-09-17
+- **Fecha:** 2026-09-17
 - **Acceso local:** http://ddpshopify.test/admin
-- **Suite:** `347 passed (772 assertions)`
-- **Último commit:** `d86777e Update` — hay **7 archivos modificados y 2 nuevos sin commitear** (§11)
+- **Suite:** `360 passed (814 assertions)`
+- **Rama:** `main`, sincronizada con `origin/main`
+- **Último commit:** `f676a23 Update con publicación en Shopify`
+- **Árbol de trabajo:** solo `handoff.md` modificado (esta actualización), pendiente de commit
 
 ---
 
@@ -17,6 +23,8 @@ Backoffice web en Laravel para preparar fichas de producto de **Dies de Platja**
 enviarlas a Shopify **siempre como borrador**. La aplicación ayuda a generar
 descripciones, SEO, metadatos, tags y ALT de imágenes mediante IA, pero **los datos
 comerciales reales los introduce o valida una persona**.
+
+El sistema propone; una persona aprueba. La publicación automática queda fuera del alcance.
 
 Principios no negociables (RFC-0000):
 
@@ -37,26 +45,22 @@ Principios no negociables (RFC-0000):
 |---|---|
 | Laravel | 12.69.2 |
 | PHP (CLI) | 8.3.27 |
-| PHP (Apache) | **8.4.25** (distinto del CLI, ver aviso) |
+| PHP (Apache) | **8.4.25** (distinto del CLI, ver avisos) |
 | MySQL | 8.4.3 |
 | Backoffice | Filament 4.13.2 |
 | Colas | Redis en producción; `database` en local |
-| IA | **OpenRouter** (sustituye a OpenAI), tras `App\Contracts\Ai\AiClient` |
+| IA | **OpenRouter**, tras `App\Contracts\Ai\AiClient` |
 | Shopify | Admin GraphQL API, **versión `2026-07`** |
 
 ### Acceso local
-
-Hay dos usuarios en la base de datos de desarrollo:
 
 | Usuario | Rol |
 |---|---|
 | `admin@diesdeplatja.test` | Administrador técnico |
 | `rosa51@example.com` | Operadora |
 
-**Las contraseñas NO se documentan aquí a propósito**: este archivo está versionado en
-git y el proyecto exige que ningún secreto llegue a un archivo versionado. La del
-administrador se fijó a mano durante el desarrollo y la de la operadora proviene de la
-factory del seeder de demo.
+**Las contraseñas no se documentan aquí a propósito**: este archivo está versionado en git
+y el proyecto exige que ningún secreto llegue a un archivo versionado.
 
 Para fijar una contraseña conocida del administrador (mínimo 12 caracteres):
 
@@ -65,68 +69,60 @@ $env:PRODUCT_STUDIO_ADMIN_PASSWORD='<tu-clave>'
 php artisan db:seed --class=AdminUserSeeder --force
 ```
 
-Sin esa variable, el seeder genera una aleatoria que **se muestra una única vez por
-consola**.
+Sin esa variable, el seeder genera una aleatoria que **se muestra una única vez por consola**.
 
 > El admin exige configurar **2FA** (TOTP) antes de dejarte ver nada más: te redirige al
 > perfil y el resto del panel queda cerrado. Para trastear sin eso, usa la operadora.
 
 ### Avisos del entorno (importantes)
 
-- **Apache usa PHP 8.4.25 y el CLI 8.3.27.** Son binarios distintos: un fallo puede
-  reproducirse en web y no en consola, o al revés. Si algo sólo falla en el navegador,
-  sospecha de esta diferencia.
+- **Apache usa PHP 8.4.25 y el CLI 8.3.27.** Un fallo puede reproducirse en web y no en
+  consola, o al revés. Si algo solo falla en el navegador, sospecha de esta diferencia.
 - **La herramienta `apply_patch` NO está disponible.** Editar con PowerShell:
   `[IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))`
   con here-strings `@'...'@`. Verificar el ancla con `$raw.Contains($old)` antes de
   reemplazar y pasar `php -l` después.
 - **Los archivos usan finales de línea LF, no CRLF.** Un ancla con `` `r`n `` falla.
+- **Cuidado con los escapes en here-strings.** `` `t `` dentro de una here-string de
+  PowerShell se interpreta como **tabulador** y corrompe el texto en silencio. Para texto
+  literal, usar comillas simples o concatenar con `[char]9`.
 - **En Laravel, una variable de entorno definida pero VACÍA anula el valor por defecto del
-  código**, no lo hereda. `FOO=` en `.env` hace que `env('FOO', 'default')` devuelva `''`.
-  Por eso `PRODUCT_STUDIO_PURIFIER_CACHE_PATH` va **comentada** en `.env.example`: si se
-  descomenta sin valor, HTMLPurifier se queda sin caché y reconstruye su definición en cada
-  petición (varios segundos por carga, ver §7.3). Al añadir una clave a `.env.example`,
+  código**, no lo hereda. `FOO=` hace que `env('FOO', 'default')` devuelva `''`. Por eso
+  `PRODUCT_STUDIO_PURIFIER_CACHE_PATH` va comentada en `.env.example`. Al añadir una clave,
   comprueba si tiene default en `config/` antes de dejarla vacía.
-- **Ojo con las secuencias de escape en here-strings.** `` `t `` dentro de una here-string
-  PowerShell se interpreta como **tabulador** y corrompe el texto en silencio. Ya ocurrió
-  en `config/filesystems.php` y hubo que repararlo. Para texto literal, usar comillas
-  simples o concatenar con `[char]9`.
 - **Shell:** `powershell` 5.1. `pwsh` 7.6.5 disponible con el parámetro `shell: pwsh`.
-  `foreach (Get-ChildItem ...)` es error de sintaxis; escribir
-  `foreach ($f in (Get-ChildItem ...))`.
+  `foreach (Get-ChildItem ...)` es error de sintaxis; escribir `foreach ($f in (...))`.
 - **Composer:** `php D:\laragon\bin\composer\composer.phar` (no está en el PATH).
 - **MySQL:** `D:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysql.exe`, usuario `root`,
   contraseña vacía, `127.0.0.1:3306`.
 - **Redis no está arrancado** en local (puerto 6379 cerrado) → `QUEUE_CONNECTION=database`.
 - **Horizon no se puede instalar** en Windows: requiere `ext-pcntl`. Decisión de RFC-0007.
 - Bases de datos: `shopify_product_studio` (desarrollo) y `shopify_product_studio_test`.
-- **NO usar `migrate:fresh`** (rechazado por destructivo). Usar
-  `php artisan migrate --seed` o `php artisan db:seed --class=X`.
-- Las pruebas usan SQLite `:memory:` por defecto (`phpunit.xml`); también se validan
-  contra MySQL con variables de entorno.
-- Sin extensión `phpredis` → `REDIS_CLIENT=predis`.
+- **NO usar `migrate:fresh`** (rechazado por destructivo). Usar `php artisan migrate --seed`
+  o `php artisan db:seed --class=X`.
+- Las pruebas usan SQLite `:memory:` por defecto (`phpunit.xml`); también se validan contra
+  MySQL con variables de entorno.
 - Zona horaria `Europe/Madrid`, locale `es`.
+
 ---
 
 ## 3. Configuración de Laragon (ya aplicada)
 
-El vhost estaba mal y se corrigió. Situación actual:
+El vhost estaba mal y se corrigió:
 
 ```
 D:\laragon\etc\apache2\sites-enabled\auto.ddpshopify.test.conf
   define ROOT "D:/laragon/www/ddpshopify/public"     <- DEBE terminar en /public
 ```
 
-Copia del original (apuntaba a la raíz del proyecto) en
-`auto.ddpshopify.test.conf.bak`.
+Copia del original en `auto.ddpshopify.test.conf.bak`.
 
 **Por qué importa:** con `DocumentRoot` en la raíz del proyecto y sin `.htaccess` allí,
 `http://ddpshopify.test/.env` serviría `APP_KEY`, la contraseña de MySQL y los tokens de
 Shopify y OpenRouter. Ahora `/.env` devuelve **404**.
 
-**Apache no recarga los vhosts solo.** Si añades o editas uno, hay que reiniciar. Apache
-no está instalado como servicio, así que `-k restart` no funciona; hay que parar y arrancar
-el proceso:
+**Apache no recarga los vhosts solo.** Apache no está instalado como servicio, así que
+`-k restart` no funciona; hay que parar y arrancar el proceso:
 
 ```powershell
 $exe  = 'D:\laragon\bin\apache\httpd-2.4.68-260617-Win64-VS18\bin\httpd.exe'
@@ -136,8 +132,8 @@ Get-Process httpd | Stop-Process -Force
 Start-Process -FilePath $exe -ArgumentList '-d', $root -WindowStyle Hidden
 ```
 
-Y `APP_URL=http://ddpshopify.test` en `.env` (antes `localhost:8000`): con el valor antiguo
-las URLs firmadas de las imágenes apuntaban a `localhost:8000` y salían rotas.
+Y `APP_URL=http://ddpshopify.test` en `.env`: con el valor anterior las URLs firmadas de las
+imágenes apuntaban a `localhost:8000` y salían rotas.
 
 ---
 
@@ -149,81 +145,154 @@ las URLs firmadas de las imágenes apuntaban a `localhost:8000` y salían rotas.
 | RFC-0001 | Fundación, seguridad y modelo de datos | **Implementado** (`docs/implementation/RFC-0001.md`) |
 | RFC-0002 | Flujo de alta, edición y aprobación | **Implementado** (falta doc de fase) |
 | RFC-0003 | IA, SEO y contenido (OpenRouter) | **Implementado** (falta doc de fase) |
-| RFC-0004 | Integración Shopify e idempotencia | **Casi completo** — falta el doc de fase y el job de publicación (fuera del MVP) |
+| RFC-0004 | Integración Shopify e idempotencia | **Implementado** (`docs/implementation/RFC-0004.md`) |
 | RFC-0005 | Medios, variantes y validaciones | Parcial (dentro de RFC-0001/0002) |
 | RFC-0006 | Pruebas y aceptación | No iniciado |
 | RFC-0007 | Despliegue y observabilidad | No iniciado |
 
+Falta solo: el **job de publicación** (que el propio RFC-0004 sitúa fuera del MVP) y los
+documentos de fase de RFC-0002 y RFC-0003.
 ---
 
-## 5. Hallazgos verificados de la API de Shopify
+## 5. Inventario de funcionalidades
 
-Se consultó la documentación vigente antes de implementar. Estos datos **cambian el
-diseño** y no deben asumirse de memoria:
+Lo que la aplicación hace **hoy**, para revisarlo y decidir qué ampliar.
 
-1. **`SHOPIFY_API_VERSION=2025-01` estaba retirada** (dejó de ser soportada en enero de
-   2026). La última estable es **`2026-07`**. Se cambió el valor por defecto. Shopify
-   retira una versión cada trimestre y, ante una versión no soportada, responde con la más
-   antigua accesible: el contrato dejaría de ser predecible.
-2. **`productSet` es la mutación vigente recomendada** para crear o actualizar: sustituye
-   al conjunto `productCreate` + `productUpdate` + `productVariantsBulkCreate`.
-   - Admite `identifier: {id: ...}` o `{handle: ...}` -> resuelve la idempotencia sin
-     consulta previa.
-   - **Es destructiva con los campos de lista**: hay que reenviar *todas* las variantes y
-     *todos* los medios en cada llamada, o Shopify borra los que falten.
-3. **`productCreate` sólo crea la primera variante** — motivo adicional para `productSet`.
-4. **Medios en dos pasos:** `stagedUploadsCreate` -> subir los bytes -> `fileCreate` ->
-   asociar con `productSet(files: [{originalSource: <gid>, alt: ...}])`.
-   - El archivo debe subirse **el último** en el multipart: la firma de la URL temporal
-     sólo es válida si el resto de campos la preceden.
-   - `duplicateResolutionMode: APPEND_UUID` es necesario para que el ALT se aplique.
-5. **El filtrado de metafields por servidor sólo es fiable si el metafield está declarado
-   como `adminFilterable`.** Si no lo está, Shopify **ignora el filtro y devuelve productos
-   cualesquiera** -> riesgo de falso positivo que haría que una ficha sobrescribiese el
-   borrador de otra. Por eso el valor se **verifica por cliente**.
-6. Los metafields propiedad de la app (`$app`) quedan ocultos de la Storefront API por
-   defecto, lo que satisface «no visible para la tienda».
+### 5.1 Panel de fichas (`/admin/products`)
 
----
+**Listado** con pestañas: Todas · Pendientes · En curso · Aprobadas · Enviadas a Shopify ·
+Con errores. Filtros por estado, tipo, público, creada por, colección, fecha, con errores y
+listas para enviar. Métricas arriba: fichas creadas, pendientes, tiempo medio a borrador y
+con errores.
 
-## 6. Arquitectura implementada (RFC-0004)
+**Formulario en tres pestañas:**
 
-- `ShopifyOperations` — **todos** los documentos GraphQL en un único sitio, para que un
-  cambio de API no afecte al dominio.
-- `ShopifyGraphQlClient` — transporte: versión de API, autenticación y cabeceras de límite
-  de llamadas. Traduce 401/403/404/429/430/5xx y `THROTTLED`.
-- `ShopifyFileUploader` — subida de medios en dos pasos y espera a `READY`.
-- `ShopifyProductGatewayImpl` — implementa el contrato `ShopifyProductGateway`.
-- `ProductSyncService` — orquesta el flujo completo y escribe `sync_attempts`.
-- `SyncProductToShopifyJob` — trabajo en cola `shopify`.
-- `SyncAttemptsRelationManager` — panel «Sincronizaciones con error» con reintento.
+- *Datos verificados* — identificación (referencia, nombre, tipo, público, marca), datos
+  comerciales (precio, precio anterior, moneda) y ficha técnica (composición, ajuste,
+  colección, cuidados, observaciones).
+- *Contenido comercial* — la propuesta generada, con avisos.
+- *SEO y Shopify* — handle y GID del producto remoto.
 
-### Idempotencia en tres capas
+**Guardado automático** cada 5 segundos y al cambiar de sección. Es idempotente y no crea
+versiones de contenido nuevas.
 
-1. Si se conoce el GID, se **actualiza** ese producto (`identifier.id`).
-2. Si no, se busca por el metafield privado `product_studio_id` y, como comprobación
-   secundaria, por **handle**.
-3. Un medio cuyo `sha256` ya tiene GID **no se vuelve a subir**.
+**Acciones de la ficha** (todas con confirmación y rastro en auditoría):
 
-El estado se fija dentro del gateway (`'status' => 'DRAFT'`), no se recibe de fuera: es la
-garantía de que ninguna ruta puede publicar por accidente.
-
-### Dos niveles de prueba, y por qué
-
-| Nivel | Doble | Qué verifica |
+| Acción | Qué hace | Quién |
 |---|---|---|
-| Contrato del conector | HTTP falso (`Http::fake`) | GraphQL bien formado, ALT, traducción de errores |
-| Flujo / orquestación | `FakeShopifyGateway` | Cuántas veces se crea, con qué GID, qué pasa si un intento falla |
+| Generar propuesta | Encola la generación con IA | Operadora |
+| Propuesta sin IA | Crea una propuesta local desde los datos confirmados | Operadora |
+| Regenerar un campo | Reescribe un solo campo sin tocar los demás | Operadora |
+| Restaurar propuesta | Recupera una versión aprobada como versión nueva | Operadora |
+| Aprobar ficha | Habilita el envío como borrador | Responsable |
+| Enviar como borrador | Encola el envío a Shopify | Operadora |
+| Exportar JSON | Descarga la ficha completa, sin credenciales | Operadora |
 
-El segundo existe porque el primero **no puede** responder a «¿dos clics crean dos
-productos?»: eso no es un problema de GraphQL sino de orquestación. `FakeShopifyGateway`
-registra cada llamada y permite simular fallos (`alwaysFailWith`, `failNextWith`) y que el
-producto ya exista (`alreadyExists`).
+El botón de envío pasa a **«Actualizar borrador»** cuando la ficha ya tiene producto remoto.
 
-**Importante:** el gateway real resuelve internamente el producto existente cuando no
-recibe GID (`$productGid ??= $this->findProductGid($payload)`). El doble **emula ese
-comportamiento**; si no lo hiciera, la prueba de «se perdió la respuesta» no reproduciría
-lo que pasa de verdad.
+**Pestañas de relación:** Imágenes (subir, ordenar arrastrando, marcar principal, editar ALT,
+borrar), Variantes (matriz Color × Talla) y Sincronizaciones con Shopify (historial de
+intentos con causa y botón de reintento).
+
+### 5.2 Generación con IA (`app/Services/Ai`)
+
+Envía a OpenRouter **solo** los datos confirmados y hasta 4 fotos redimensionadas. La
+respuesta se valida contra un esquema JSON estricto; si no cumple, se rechaza.
+
+- Perfiles de contenido por familia (`ContentProfile`): camiseta, sudadera, bolso, infantil.
+- Comprobador de afirmaciones prohibidas: «algodón orgánico», «hecho en España», «unisex»,
+  medidas, certificados… si no constan en los datos confirmados.
+- Límite diario de generaciones por ficha (10 por defecto), configurable.
+- Guarda modelo, versión de prompt, tokens y latencia por ejecución.
+- **No aprueba nada**: deja la ficha en *En revisión*.
+
+### 5.3 Sincronización con Shopify (`app/Services/Shopify`)
+
+- Estado siempre `DRAFT`, fijado **dentro del gateway**, no recibido de fuera.
+- Idempotencia en tres capas: GID conocido → metafield `product_studio_id` → handle.
+- Medios en dos pasos (`stagedUploadsCreate` → subir → `fileCreate` → asociar), con ALT.
+- Un medio cuyo `sha256` ya tiene GID no se vuelve a subir.
+- Cada intento queda en `sync_attempts` con causa legible y referencia de soporte.
+- El reintento **continúa** desde donde quedó; no reinicia.
+- Errores transitorios (límite de llamadas, 5xx) se propagan para que la cola aplique
+  backoff; los definitivos (token inválido) no.
+
+### 5.4 Comandos de consola
+
+```bash
+php artisan shopify:check                        # diagnostica sin modificar nada
+php artisan shopify:sync DDP-14666 --dry-run     # ver qué enviaría
+php artisan shopify:sync DDP-14666               # enviar como borrador
+```
+
+`shopify:sync` existe porque el panel **encola**, y en local sin worker el trabajo se queda
+en la tabla `jobs`. Ejecuta el **mismo servicio** que el job, no una vía alternativa.
+
+### 5.5 Seguridad y auditoría
+
+- Autorización **solo** por Policies (ocultar botones no es la barrera).
+- Tres roles: operadora, responsable de catálogo, administrador técnico.
+- Auditoría propia (`activity_log`) con diff estructurado, IP y redacción de secretos.
+- HTML sanitizado con lista blanca estricta antes de guardar.
+- 2FA obligatorio para administradores técnicos.
+- Ningún secreto se versiona ni se persiste: todo se lee del entorno.
+
+---
+
+## 6. Mapa del código
+
+### Puntos de extensión habituales
+
+| Quiero… | Tocar |
+|---|---|
+| Añadir un campo a la ficha | Migración + `$fillable` + `casts()` en `Product`, `ProductForm`, y `ProductResource::editableProductAttributes()` |
+| Añadir una acción al panel | `EditProduct::getHeaderActions()` |
+| Cambiar el prompt o las reglas de la IA | `app/Support/Ai/PromptBuilder.php`, `ContentProfile.php`, `ProhibitedClaimsChecker.php` |
+| Añadir una validación | `app/Support/Products/ProductValidator.php` (bloqueante o aviso) |
+| Añadir una llamada a Shopify | `ShopifyOperations` (el documento) + el gateway |
+| Añadir un permiso | `app/Enums/Permission.php` (`byRole()` es la única fuente de verdad) |
+| Añadir un rol | `app/Enums/Role.php` + `Permission::byRole()` |
+| Cambiar textos del panel | `app/Filament/**` y `resources/views/filament/**` |
+
+### Estructura
+
+```
+app/
+  Console/Commands/      shopify:check, shopify:sync
+  Contracts/             AiClient, ShopifyProductGateway  (fronteras del dominio)
+  DataObjects/           DTOs de IA y Shopify
+  Enums/                 ProductStatus, Permission, Role, SyncStatus…
+  Exceptions/            AiRequestFailed, ShopifyRequestFailed (retryable/permanent)
+  Filament/              recurso de fichas: páginas, esquema, tabla, widgets, paneles
+  Http/Middleware/       EnsurePrivilegedUsersHaveTwoFactor, AssignsRequestId
+  Jobs/                  GenerateProductContentJob, SyncProductToShopifyJob
+  Models/                Product, ProductVariant, ProductMedia, ProductContent,
+                         SyncAttempt, ActivityLog, User
+  Policies/              autorización (la única fuente de verdad)
+  Services/
+    Ai/                  OpenRouterClient, NullAiClient, ProductGenerationService
+    Products/            ProductService, ProductContentService, ProductMediaService,
+                         ProductVariantService
+    Shopify/             ShopifyOperations (GraphQL), ShopifyGraphQlClient (transporte),
+                         ShopifyFileUploader, ShopifyProductGatewayImpl, ProductSyncService
+  Support/
+    Ai/                  PromptBuilder, ContentProfile, GenerationLimiter, ImagePreparer…
+    Audit/               ActivityRecorder, SecretRedactor, SecretRedactingProcessor
+    Media/               MediaRules
+    Products/            ProductValidator, ProductReadiness, VariantMatrix, ProductLock,
+                         IdempotencyKey, SkuNormalizer
+    Security/            HtmlSanitizer, SanitizesHtml
+```
+
+### Dónde vive cada regla de negocio
+
+- **Estados y transiciones** → `app/Enums/ProductStatus.php` (`allowedTransitions()`).
+- **Qué impide enviar** → `app/Support/Products/ProductValidator.php`.
+- **Desde qué estados se puede enviar** → `app/Support/Products/ProductReadiness.php`.
+- **Quién puede hacer qué** → `app/Policies/*` + `app/Enums/Permission.php`.
+
+Las cuatro están separadas a propósito: el botón, la validación y la Policy no pueden
+discrepar porque beben de las mismas fuentes.
 
 ---
 
@@ -239,21 +308,14 @@ Attempted to lazy load [product] on model [App\Models\ProductMedia]
 ```
 
 **Causa:** las Policies autorizan **por fila** (`$user->can('update', $media->product)`) y
-Filament carga las filas de las tablas de golpe. Los hijos (`ProductMedia`,
-`ProductVariant`, `ProductContent`, `SyncAttempt`) no traían el padre cargado. En local
-`Model::preventLazyLoading()` está activo (en producción no), de ahí que reventara.
+Filament carga las filas de las tablas de golpe. Los hijos no traían el padre cargado. En
+local `Model::preventLazyLoading()` está activo (en producción no).
 
-**Solución:** `chaperone('product')` en las **cuatro** relaciones de `Product`. Enlaza el
-padre en los hijos durante la misma consulta, sin consultas extra.
+**Solución:** `chaperone('product')` en las **cuatro** relaciones de `Product`:
+`variants()`, `media()`, `contents()`, `syncAttempts()`.
 
-```php
-return $this->hasMany(ProductMedia::class)
-    ->orderBy('sort_order')
-    ->chaperone('product');
-```
-
-**Detalle crítico que hay que recordar:** `Builder::hydrate()` (línea 472) sólo propaga la
-prohibición de carga diferida **cuando la consulta devuelve más de un registro**:
+**Detalle crítico:** `Builder::hydrate()` (línea 472) sólo propaga la prohibición de carga
+diferida **cuando la consulta devuelve más de un registro**:
 
 ```php
 if (count($items) > 1) {
@@ -261,29 +323,16 @@ if (count($items) > 1) {
 }
 ```
 
-Consecuencias:
-
-- Con **una sola** fila el fallo no se reproduce. Eso explica por qué la primera imagen se
-  subía bien y la segunda no.
-- **Cualquier prueba de regresión de este tipo necesita al menos dos filas**, o no protege
-  nada. La primera prueba que se escribió pasaba con el bug presente justo por esto.
+Consecuencias: (a) con **una sola** fila el fallo no se reproduce, lo que explica por qué la
+primera imagen se subía bien y la segunda no; y (b) **cualquier prueba de regresión de este
+tipo necesita al menos dos filas**, o no protege nada.
 
 ### 7.2 Mensaje de error engañoso al enviar una ficha ya en curso
 
-El guard de `ProductSyncService` decía, ante **cualquier** motivo por el que no
-procedía enviar:
-
-> «La ficha tiene errores bloqueantes que impiden enviarla.»
-
-Eso era **falso** cuando el motivo real era otro. En concreto, al pulsar dos veces
-«Enviar», la ficha ya está en `syncing`: no hay ningún error, simplemente ya se está
-enviando. El mensaje llevaba a buscar un problema inexistente.
-
-Ahora distingue los tres casos:
-
-- Ficha archivada.
-- Ficha que **ya se está enviando** («Espera a que termine para volver a intentarlo»).
-- Bloqueantes reales, e incluye **cuáles** son (hasta tres) en el propio mensaje.
+El guard de `ProductSyncService` decía «La ficha tiene errores bloqueantes que impiden
+enviarla» ante **cualquier** motivo. Era falso cuando la ficha ya estaba en `syncing`: no hay
+ningún error, simplemente ya se está enviando. Ahora distingue archivada / ya enviándose /
+bloqueantes reales (indicando cuáles).
 
 ### 7.3 Caché de HTMLPurifier con nombre inválido
 
@@ -294,85 +343,86 @@ petición). Corregido a `'Serializer'`, con `mkdir` si falta y comprobación de 
 ### 7.4 Rutas de almacenamiento en colisión
 
 `local`, `media` y `media-derived` declaraban `'serve' => true` sin `url`, así que **los tres
-calculaban la misma URI `/storage`** y competían por la misma ruta. Sobrevivía sólo una
-(`storage.media-derived`), y `Storage::disk('media')->temporaryUrl()` lanzaba
-`Route [storage.media] not defined`. Como `ImageColumn` cae en silencio al `url()` plano
-cuando eso falla, las miniaturas pedían `/storage/...` y la ruta superviviente las servía
-desde el disco equivocado con firma obligatoria -> **403 mudo**. Se dio a cada disco su
-propia URI en `config/filesystems.php`.
+calculaban la misma URI `/storage`**. Sobrevivía una (`storage.media-derived`) y
+`Storage::disk('media')->temporaryUrl()` lanzaba `Route [storage.media] not defined`. Como
+`ImageColumn` cae en silencio al `url()` plano, las miniaturas pedían `/storage/...` y la
+ruta superviviente las servía desde el disco equivocado con firma obligatoria → **403 mudo**.
+Se dio a cada disco su propia URI en `config/filesystems.php`.
 
-### 7.5 Otros errores corregidos
+### 7.5 El seeder de demo creaba medios sin archivo
+
+`DemoProductSeeder` creaba la fila en `product_media` con una ruta inventada, pero **nunca
+escribía el archivo**. La ficha parecía completa en el panel, pero al enviarla fallaba con
+«no se encuentra el archivo de imagen». Ahora genera un JPEG real de 1200×1200.
+
+### 7.6 Versión de API retirada en `.env`
+
+`.env` fijaba `SHOPIFY_API_VERSION=2025-01`, **retirada**. El default del código ya era
+`2026-07`, pero `.env` lo sobrescribía. Corregido, más 7 claves que faltaban.
+
+### 7.7 Otros
 
 | Error | Corrección |
 |---|---|
-| URL con barra final -> HTTP 404 | `Http::baseUrl($endpoint)->post('')` producía `.../graphql.json/`. Se añadió `endpoint()` y `post($this->endpoint(), ...)` |
+| URL con barra final → HTTP 404 | `Http::baseUrl($endpoint)->post('')` producía `.../graphql.json/`. Se añadió `endpoint()` |
 | `findByStudioId` pasaba `studioId` como handle | El respaldo por handle se movió a `findProductGid()` |
-| Verificación del metafield era un no-op | Ahora la consulta pide `metafield.value` y se compara directamente |
-| `mediaGids()` devolvía `[]` | Los GID de medios nunca se persistían. Ahora `prepareMedia()` devuelve `byMedia` + `byChecksum` |
-| `array_unique` sobre arrays anidados | «Array to string conversion». Se deduplica por cadena y luego se mapea |
+| Verificación del metafield era un no-op | Ahora la consulta pide `metafield.value` y se compara |
+| `mediaGids()` devolvía `[]` | Los GID de medios nunca se persistían |
+| `array_unique` sobre arrays anidados | «Array to string conversion» |
 | Firma incompatible de `canViewForRecord` | El padre exige `Model`, no `Product` |
-| Vhost apuntando a la raíz del proyecto | Riesgo de exponer `.env`. Corregido a `/public` |
+| Vhost apuntando a la raíz del proyecto | Riesgo de exponer `.env` |
 
 ---
 
-## 8. Archivos creados o modificados
+## 8. Operación diaria
 
-### Creados (RFC-0004)
+### El worker de cola no está corriendo (causa habitual de «no pasa nada»)
 
-| Archivo | Contenido |
-|---|---|
-| `app/Services/Shopify/ShopifyOperations.php` | Documentos GraphQL |
-| `app/Services/Shopify/ShopifyFileUploader.php` | Subida de medios en dos pasos |
-| `app/Services/Shopify/ShopifyProductGatewayImpl.php` | Implementación del conector |
-| `app/Services/Shopify/ProductSyncService.php` | Orquestación + `sync_attempts` |
-| `app/Jobs/SyncProductToShopifyJob.php` | Trabajo en cola `shopify` |
-| `app/DataObjects/Shopify/ShopifyUploadedFile.php` | DTO de archivo subido |
-| `app/Filament/.../RelationManagers/SyncAttemptsRelationManager.php` | Panel de errores + reintento |
-| `tests/Support/BuildsSyncableProducts.php` | Trait: ficha sincronizable + dobles HTTP |
-| `tests/Support/FakeShopifyGateway.php` | Doble del conector para probar la orquestación |
-| `tests/Feature/Shopify/ShopifyGatewayTest.php` | 17 pruebas del contrato del conector |
-| `tests/Feature/Shopify/ProductSyncServiceTest.php` | 23 pruebas de orquestación |
+`QUEUE_CONNECTION=database` y **no hay ningún worker activo**. Tanto «Generar propuesta»
+como «Enviar como borrador» **encolan**: sin worker, el trabajo se queda en la tabla `jobs`
+y la ficha se queda en *Generando* o *Sincronizando* indefinidamente.
 
-### Modificados
+```bash
+php artisan queue:work --queue=ai,shopify,media
+```
 
-| Archivo | Cambio |
-|---|---|
-| `app/Models/Product.php` | `chaperone('product')` en `variants()`, `media()`, `contents()`, `syncAttempts()` |
-| `config/filesystems.php` | URI propia por disco: `/storage/private`, `/storage/media`, `/storage/media-derived` |
-| `config/product-studio.php` | `api_version` -> `2026-07`; `connect_timeout`, `retry_times`, `retry_backoff_ms`, `upload_timeout`, `media_poll_attempts`, `media_poll_sleep_ms`, `metafield_namespace` |
-| `app/Services/Shopify/ShopifyGraphQlClient.php` | `endpoint()` público; sin `baseUrl` (evita la barra final) |
-| `app/DataObjects/Shopify/ShopifyProductPayload.php` | Medios con `disk`/`path`/`mimeType`/`mediaId`/`shopifyMediaGid`; `isDraft()` |
-| `app/Providers/AppServiceProvider.php` | Registro del singleton `ShopifyProductGateway` |
-| `app/Filament/.../Pages/EditProduct.php` | La acción real llama a `ProductSyncService::request()` |
-| `app/Filament/.../ProductResource.php` | Registra `SyncAttemptsRelationManager` |
-| `app/Support/Security/HtmlSanitizer.php` | Corrección del caché de HTMLPurifier |
-| `tests/Feature/Models/ProductVariantModelTest.php` | Prueba de regresión de carga diferida |
-| `tests/Feature/Products/ProductMediaTest.php` | Prueba de regresión de autorización por fila |
-| `app/Services/Shopify/ProductSyncService.php` | Mensajes de error que distinguen el motivo real |
-| `.env.example` | `SHOPIFY_API_VERSION` -> `2026-07` + 8 claves nuevas documentadas |
+**`queue:work` sin `--queue` escucha solo `default`**, y los trabajos van a `ai`, `shopify` y
+`media`. Es el fallo más fácil de cometer aquí.
 
-### Configuración de entorno (fuera del repositorio)
+Para ejecutar uno suelto:
 
-- `D:\laragon\etc\apache2\sites-enabled\auto.ddpshopify.test.conf` — `ROOT` -> `/public`
-- `.env` — `APP_URL=http://ddpshopify.test`
+```bash
+php artisan queue:work --queue=ai --once
+```
 
----
+Para IA y Shopify hay alternativa síncrona sin worker: `shopify:sync` (Shopify) y la
+generación se puede lanzar con `php artisan tinker` llamando a `ProductGenerationService`.
 
-## 9. Comandos
+### Comprobar el estado
+
+```bash
+php artisan shopify:check
+```
+
+```sql
+-- trabajos pendientes y fallidos
+SELECT id, queue, attempts FROM jobs;
+SELECT id, queue, LEFT(exception, 120) FROM failed_jobs;
+```
+
+### Comandos
 
 ```bash
 # Instalación
 composer install
 cp .env.example .env
 php artisan key:generate
-
-# Base de datos (NO usar migrate:fresh)
-php artisan migrate --seed
+php artisan migrate --seed            # NO usar migrate:fresh
 php artisan storage:link
 
 # Ejecución
-php artisan serve              # alternativa a Laragon: http://localhost:8000/admin
-php artisan queue:work         # trabajos ai / shopify / media
+php artisan serve                     # alternativa a Laragon
+php artisan queue:work --queue=ai,shopify,media
 
 # Pruebas
 php artisan test --compact
@@ -383,59 +433,21 @@ DB_CONNECTION=mysql DB_DATABASE=shopify_product_studio_test DB_USERNAME=root php
 php vendor\bin\pint
 ```
 
-Notas:
-
-- El administrador se recrea con `AdminUserSeeder`; respeta
-  `PRODUCT_STUDIO_ADMIN_PASSWORD` (mínimo 12 caracteres).
-- En pruebas, un admin sin 2FA es redirigido: usar
-  `User::factory()->adminTecnico()->withTwoFactor()->create()`.
-- Helpers de prueba: `$this->operadora()`, `$this->responsable()`, `$this->admin()`.
-
 ---
 
-## 10. Pruebas
+## 9. Pruebas
 
-- **Suite completa: `347 passed (772 assertions)`** (al inicio de la sesión: 305 / 670).
-- `ShopifyGatewayTest`: **17 pruebas** — contrato del conector (HTTP falso).
-- `ProductSyncServiceTest`: **23 pruebas** — orquestación (gateway falso).
+- **Suite completa: `360 passed (814 assertions)`** (al inicio de la sesión: 305 / 670).
+- `ShopifyGatewayTest` — **17 pruebas**: contrato del conector (HTTP falso).
+- `ProductSyncServiceTest` — **23 pruebas**: orquestación (gateway falso).
+- `ShopifyCommandsTest` — **13 pruebas**: comandos de consola.
 - `pint --test`: pasa.
-
-### Las pruebas de orquestación se verificaron rompiendo el código a propósito
-
-Un test de regresión que pasa **con el bug presente** no protege nada (pasó una vez en esta
-sesión, ver §7.1). Para evitarlo, las tres afirmaciones críticas se comprobaron revirtiendo
-el código a mano y confirmando que fallan:
-
-| Se rompió | Resultado |
-|---|---|
-| Pasar `null` en vez del GID conocido | ❌ falla «se actualiza en lugar de crear otra» |
-| No persistir los GID de variante | ❌ falla «guarda los gid de las variantes por sku» |
-| No marcar `SyncFailed` al fallar | ❌ falla «un error transitorio marca la ficha» |
-
-Conviene repetir este ejercicio al añadir pruebas sobre reglas de negocio.
-
-### Criterios de aceptación de RFC-0004 cubiertos
-
-| Criterio del RFC | Prueba |
-|---|---|
-| Dos clics seguidos -> un único producto remoto | `test_dos_clics_seguidos_no_duplican_el_producto_remoto` |
-| Modificar una ficha y actualizar el mismo producto | `test_una_ficha_ya_sincronizada_se_actualiza_en_lugar_de_crear_otra` |
-| Error de API legible con referencia de soporte | `test_un_error_definitivo_no_se_propaga_y_deja_el_error_legible` |
-| Reintento que continúa, no reinicia | `test_el_reintento_continua_desde_el_gid_ya_guardado` |
-| Nunca publicar por accidente | `test_nunca_envia_algo_que_no_sea_borrador` |
-
-Cobertura del conector: estado siempre `DRAFT`; título/descripción/handle/tags/SEO;
-opciones y variantes con SKU y precio; metafield privado; subida de medios conservando el
-ALT; no re-subida cuando ya hay GID; actualización del producto conocido; reutilización si
-se perdió el GID; ignorar un resultado de búsqueda ajeno; rechazo de algo que no sea
-borrador; token inválido; límite de llamadas; errores de usuario legibles; no configurado;
-versión de API en la URL; token sólo en cabecera; resolución del contrato.
 
 ### Las pruebas NO detectan los fallos de carga diferida por defecto
 
 `AppServiceProvider.php:88` desactiva `preventLazyLoading` en pruebas. Los errores de carga
-diferida de esta sesión **sólo aparecían en la aplicación real**. Las pruebas de regresión
-que los cubren lo activan a propósito:
+diferida **solo aparecían en la aplicación real**. Las pruebas de regresión lo activan a
+propósito:
 
 ```php
 Model::preventLazyLoading();
@@ -445,65 +457,139 @@ try { ... } finally { Model::preventLazyLoading(false); }
 Y necesitan **al menos dos filas** (ver §7.1). Si añades una relación nueva con Policy por
 fila, aplica `chaperone('product')` desde el principio.
 
+### Verificar que una prueba nueva protege de verdad
+
+Un test que pasa **con el bug presente** no protege nada. Ocurrió una vez en este proyecto
+(ver §7.1). El método: revertir el código a mano y confirmar que falla.
+
+Se hizo con las afirmaciones críticas y las tres fallaron como debían: pasar `null` en vez
+del GID, no persistir los GID de variante, y no marcar `SyncFailed`. **Repite este ejercicio
+al añadir reglas de negocio nuevas.**
+
 ### Anomalía conocida (benigna, sin resolver)
 
 Una prueba de la suite tarda **~15,1 s**. Se acotó a la **primera llamada a
-`Storage::fake()`** del proceso. Es **dependiente de la posición**, no de la prueba
-(primero salió en la 4.ª y luego en la 5.ª), y **en aislamiento tarda 0,7 s**. Un
-`PerfProbeTest` dedicado no lo reprodujo. El directorio
-`storage/framework/testing/disks/media` está prácticamente vacío, así que **no es**
-`cleanDirectory()`. Hipótesis: arranque en frío del proceso en Windows (antivirus / primera
-E/S). **No afecta a la corrección**, pero conviene entenderlo antes de montar CI.
+`Storage::fake()`** del proceso. Es **dependiente de la posición**, no de la prueba, y en
+aislamiento tarda 0,7 s. Hipótesis: arranque en frío del proceso en Windows (antivirus /
+primera E/S). No afecta a la corrección, pero conviene entenderlo antes de montar CI.
 
 ---
 
-## 11. Pendientes
+## 10. Datos de demo actuales
 
-### Inmediato
+| id | Referencia | Estado | Variantes | Imágenes | Contenido |
+|---|---|---|---|---|---|
+| 1 | `DDP-57151` | En revisión | 0 | 0 | 0 |
+| 2 | `DDP-14666` | Aprobada | 4 | 1 | 1 |
+| 10 | `DDP-TS-03` | En revisión | 0 | 3 | 1 |
 
-- [ ] **Commitear**: 7 archivos modificados y 2 nuevos sin commitear (ver §8).
-      `git diff --stat -- . ':(exclude)handoff.md'` -> 6 archivos, +210 / -13.
+Colas: **0 pendientes, 0 fallidos**.
 
-### Para cerrar RFC-0004
+### Las imágenes de `DDP-TS-03` no son de una camiseta
 
-- [x] ~~Pruebas de orquestación de `ProductSyncService`~~ — **hecho**, 23 pruebas.
-- [x] ~~Claves `SHOPIFY_*` en `.env.example`~~ — **hecho**, `2026-07` + 8 claves.
-- [ ] Documento de fase `docs/implementation/RFC-0004.md`.
-- [ ] **Job de publicación separado.** Va con matiz: el RFC-0004 lo sitúa **fuera del MVP**
-      («El MVP sólo sincroniza `DRAFT`»). No hay todavía ningún borrador que publicar, así
-      que implementarlo ahora sería construir la vía de publicación antes de que exista un
-      caso de uso. Recomendación: dejarlo para cuando haya fichas reales en Shopify.
-      La Policy (`ProductPolicy::publish`) ya existe y ya exige permiso de Responsable.
+Se verificó abriendo el archivo: son **gafas de sol** (1280×744, con la etiqueta «LENTES
+POLARIZADAS»). Son fotos de otro producto que quedaron en esa ficha al probar la subida.
 
-### Cabos sueltos menores
+Merece la pena saberlo porque la generación con IA **se comportó correctamente**: lo detectó
+y lo puso como primer aviso de la propuesta.
 
-- [ ] `ShopifyOperations` **no tiene** todavía la mutación de publicación
-      (`productUpdate(status: ACTIVE)` / `publishablePublish`). Habrá que verificarla
-      contra la documentación vigente cuando se implemente, como se hizo con `productSet`.
-- [ ] El reordenado de imágenes en el panel (`MediaRelationManager`, `reorderable`) no se
-      ha probado con clic real: la prueba cubre el servicio, no el gesto de arrastrar.
+> «Las 3 imágenes adjuntas muestran gafas de sol, no una camiseta: no coinciden con el
+> producto de la ficha.»
 
-### Fases restantes
-
-- **RFC-0005:** detección de duplicados por checksum perceptual, miniaturas y copias
-  optimizadas, comprobación de orientación, ALT obligatorio antes de sincronizar.
-- **RFC-0006:** E2E (camiseta y sudadera hasta borrador en Shopify), piloto de 15 productos.
-- **RFC-0007:** comprobaciones de salud, logs estructurados
-  (`request_id`/`product_id`/`sync_attempt_id`/`job_id`), alertas, despliegue, copias.
-- **Documentos:** `docs/implementation/RFC-0002.md`, `RFC-0003.md`, `RFC-0004.md`.
-- **`README.md`** raíz: actualizar la tabla de estado, mencionar OpenRouter y los comandos.
-
-### Datos de demo actuales
-
-| id | Referencia | Estado | Imágenes | Variantes |
-|---|---|---|---|---|
-| 1 | `DDP-57151` | review | 0 | 0 |
-| 2 | `DDP-14666` | review | 1 | 4 |
-| 10 | `DDP-TS-03` | draft | 2 | 0 |
+Además de otros tres avisos: sin color confirmado, sin colección y sin tallas. La descripción
+generada habla de la camiseta (que es lo que dicen los datos confirmados) sin inventar sobre
+lo que ve en las fotos. Es exactamente el comportamiento que pide el RFC-0003.
 
 ---
 
-## 12. Decisiones que no deben revertirse sin querer
+## 11. Hallazgos verificados de la API de Shopify
+
+Se consultó la documentación vigente antes de implementar. **No asumir de memoria:**
+
+1. **`2025-01` está retirada.** La última estable es **`2026-07`**. Shopify retira una
+   versión cada trimestre y, ante una no soportada, responde con la más antigua accesible:
+   el contrato dejaría de ser predecible.
+2. **`productSet` es la mutación vigente recomendada**: sustituye a `productCreate` +
+   `productUpdate` + `productVariantsBulkCreate`.
+   - Admite `identifier: {id}` o `{handle}` → idempotencia sin consulta previa.
+   - **Es destructiva con los campos de lista**: hay que reenviar *todas* las variantes y
+     *todos* los medios en cada llamada, o Shopify borra los que falten.
+3. **`productCreate` solo crea la primera variante** — motivo adicional para `productSet`.
+4. **Medios en dos pasos:** `stagedUploadsCreate` → subir → `fileCreate` →
+   `productSet(files: [{originalSource: <gid>, alt: ...}])`.
+   - El archivo debe subirse **el último** en el multipart: la firma solo es válida si el
+     resto de campos la preceden.
+   - `duplicateResolutionMode: APPEND_UUID` es necesario para que el ALT se aplique.
+5. **El filtrado de metafields por servidor solo es fiable si el metafield está declarado
+   `adminFilterable`.** Si no, Shopify **ignora el filtro y devuelve productos
+   cualesquiera** → una ficha podría sobrescribir el borrador de otra. Por eso el valor se
+   **verifica por cliente**.
+6. Los metafields de la app (`$app`) quedan ocultos de la Storefront API por defecto, lo que
+   satisface «no visible para la tienda».
+
+---
+
+## 12. Por dónde ampliar
+
+Huecos identificados, ordenados por relación valor/esfuerzo. **Nada de esto está
+implementado.**
+
+### 12.1 Coherencia entre producto y fotos (detectado hoy)
+
+La IA detectó que las fotos eran de gafas y la ficha era una camiseta, **pero eso se
+descubrió después de gastar una llamada**. Se podría validar antes:
+
+- Comparar `product_type` con lo que la IA ve en las fotos antes de generar.
+- O simplemente, en el panel, avisar cuando las dimensiones son anómalas para una prenda
+  (las tres fotos eran 1280×744, apaisadas).
+
+Encaja en RFC-0005.
+
+### 12.2 Diferencias entre lo que pide el RFC y lo implementado
+
+- **RFC-0005 — miniaturas y copias optimizadas:** `config/media.php` ya define
+  `thumbnails` y `optimized` (400×400 y 2048 px), y el disco `media-derived` existe, pero
+  **no hay código que los genere**. Hoy se sube a Shopify el original tal cual.
+- **RFC-0005 — duplicado perceptual:** el índice único `(product_id, sha256)` detecta
+  duplicados exactos, no visualmente similares.
+- **RFC-0005 — orientación:** no se comprueba.
+- **RFC-0003 — FAQ opcionales** por perfil de contenido: mencionados, no implementados.
+- **RFC-0003 — regeneración parcial:** existe `regenerateField`, pero conviene revisar si
+  cubre todos los campos.
+- **RFC-0002 — guardado automático:** se guarda cada 5 s y al cambiar de sección, pero no
+  hay indicador visual de «guardado»/«guardando».
+
+### 12.3 Funcionalidad nueva que no está en ningún RFC
+
+- **Inventario:** el MVP no envía cantidades (`initial_inventory_quantity` es `null`). Si se
+  quiere stock real, hay que decidir política y añadir la llamada.
+- **Traducciones:** `product_content` ya tiene `locale` (es/ca/en/fr) y `Product` tiene
+  `audience`, pero **solo se genera en español**.
+- **Edición masiva:** excluida del MVP explícitamente.
+- **Duplicar ficha:** útil para crear variantes de un mismo producto (otro color). No existe.
+- **Categoría de Shopify** (`product_category_taxonomy_id`): el campo existe y se envía, pero
+  no hay interfaz para elegirla.
+- **Poda de `sync_attempts`:** sin retención; crecerá sin límite.
+
+### 12.4 Deuda técnica conocida
+
+- **Job de publicación:** fuera del MVP por decisión del RFC. La Policy ya existe
+  (`ProductPolicy::publish`) pero `ShopifyOperations` **no tiene** la mutación
+  (`productUpdate(status: ACTIVE)` / `publishablePublish`). Habría que verificarla contra la
+  documentación vigente, como se hizo con `productSet`.
+- **Reordenado de imágenes:** la prueba cubre el servicio, no el gesto de arrastrar.
+- **Sin CI:** no hay pipeline. El primer paso sería el `15 s` de §9.
+- **`README.md` raíz:** desactualizado (dice que RFC-0002/0003/0004 están pendientes).
+
+### 12.5 Pendientes menores
+
+- [ ] Documentos de fase `docs/implementation/RFC-0002.md` y `RFC-0003.md`.
+- [ ] Actualizar `README.md`.
+- [ ] Los 3 avisos de la generación de `DDP-TS-03` siguen sin resolver (fotos equivocadas).
+
+---
+
+## 13. Decisiones que no deben revertirse sin querer
 
 - **La autorización vive en Policies**, no en ocultar botones. Una operadora no puede
   publicar ni aunque invoque la acción directamente por HTTP.
@@ -512,22 +598,23 @@ E/S). **No afecta a la corrección**, pero conviene entenderlo antes de montar C
 - **Los originales de medios nunca se borran**; los derivados son regenerables.
 - **`sha256` es la identidad del archivo**: evita duplicados y re-subidas.
 - **El reintento continúa, no reinicia**: reutiliza los GID ya guardados.
-- **La IA no aprueba nada**: sólo propone; una persona revisa campo a campo.
+- **La IA no aprueba nada**: solo propone; una persona revisa campo a campo.
 - **`sync_attempts` es append-only**: un reintento crea un intento nuevo con la misma clave
   de idempotencia.
-- **Ningún secreto se versiona ni se persiste**: los tokens se leen del entorno, el
-  redactor de secretos limpia logs, auditoría y `sync_attempts`, y **este propio documento
-  no contiene credenciales**.
-- **Las relaciones padre->hijo que alimentan Policies llevan `chaperone('product')`.**
+- **Ningún secreto se versiona ni se persiste**: los tokens se leen del entorno, el redactor
+  de secretos limpia logs y auditoría, y **este documento no contiene credenciales**.
+- **Las relaciones padre→hijo que alimentan Policies llevan `chaperone('product')`.**
 
 ---
 
-## 13. Contexto de la petición original
+## 14. Contexto de la petición original
 
-El usuario pidió iniciar el proyecto trabajando **sólo en RFC-0001**, con entrega final de
+El usuario pidió iniciar el proyecto trabajando **solo en RFC-0001**, con entrega final de
 archivos, comandos, pruebas, decisiones, pendientes y confirmación explícita antes de
-continuar. Después añadió dos modificaciones:
+continuar. Después añadió:
 
 1. Usar **OpenRouter** para la conexión con la IA (en lugar de OpenAI).
-2. **«Puedes continuar con el resto de las fases sin mi aprobación»** — ya no hay puerta de
-   aprobación entre fases; continuar hasta completar el trabajo.
+2. **«Puedes continuar con el resto de las fases sin mi aprobación»** — no hay puerta de
+   aprobación entre fases.
+3. Que el envío a Shopify se haga **como borrador** en la tienda.
+4. Actualmente revisa funcionalidades y **planifica implementar nuevas próximamente**.
