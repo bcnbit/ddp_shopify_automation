@@ -8,6 +8,7 @@ use App\Enums\InventoryPolicy;
 use App\Models\Product;
 use App\Models\ProductMedia;
 use App\Models\ProductVariant;
+use App\Support\Products\TechnicalSheetComposer;
 
 /**
  * Carga útil para Shopify (RFC-0004).
@@ -19,6 +20,12 @@ use App\Models\ProductVariant;
  * Los medios llevan `disk` y `path` porque el gateway necesita el archivo real
  * para subirlo: Shopify no puede descargar de un disco privado. El `sha256`
  * viaja aparte para poder reconocer una imagen ya subida y no repetirla.
+ *
+ * Desde RFC-0008 la descripción no es sólo el texto comercial: se compone con
+ * TechnicalSheetComposer, que añade composición, ajuste, guía de tallas y
+ * cuidados en ese orden. El compositor es el mismo que alimenta la
+ * previsualización del panel, para que lo que la persona ve sea exactamente lo
+ * que recibe la tienda.
  */
 final readonly class ShopifyProductPayload
 {
@@ -87,7 +94,10 @@ final readonly class ShopifyProductPayload
         return new self(
             studioId: (string) $product->internal_reference,
             title: (string) ($content?->title ?? $product->source_name),
-            descriptionHtml: (string) ($content?->html_description ?? ''),
+            descriptionHtml: (new TechnicalSheetComposer)->compose(
+                $product,
+                $content?->html_description,
+            ),
             handle: (string) ($content?->handle ?? $product->shopify_handle ?? ''),
             status: 'DRAFT',
             vendor: (string) ($product->brand ?? ''),

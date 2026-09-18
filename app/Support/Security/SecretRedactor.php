@@ -105,6 +105,11 @@ final class SecretRedactor
             '/\bBearer\s+[A-Za-z0-9\-._~+\/]+=*/i',
             '/\bshpat_[A-Za-z0-9]{8,}\b/',
             '/\bshpca_[A-Za-z0-9]{8,}\b/',
+            // La API secret key de una app de Shopify (`shpss_`) no es un access
+            // token, pero es una credencial con la que se firman los intercambios
+            // OAuth: si aparece en un mensaje de error, debe quedar enmascarada
+            // igual que un token (RFC-0009).
+            '/\bshpss_[A-Za-z0-9]{8,}\b/',
             '/\bsk-[A-Za-z0-9\-_]{16,}\b/',
             '/\bsk-or-v1-[A-Za-z0-9]{16,}\b/',
             '/\beyJ[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_]{10,}\.[A-Za-z0-9\-_]{10,}\b/',

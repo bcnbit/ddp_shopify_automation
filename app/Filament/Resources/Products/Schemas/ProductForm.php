@@ -6,6 +6,9 @@ namespace App\Filament\Resources\Products\Schemas;
 
 use App\Enums\Audience;
 use App\Enums\ProductType;
+use App\Models\Product;
+use App\Models\ProductTechnicalSheet;
+use App\Support\Products\TechnicalSheetCatalog;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -133,34 +136,62 @@ class ProductForm
 
             Section::make('Ficha técnica')
                 ->description('Lo que dejes vacío no se podrá mencionar en la descripción.')
-                ->columns(3)
+                ->columns(2)
                 ->schema([
-                    Textarea::make('composition')
-                        ->label('Composición')
-                        ->rows(2)
-                        ->live(onBlur: true),
+                    // Los mantenimientos se eligen de un catálogo (RFC-0008) en
+                    // lugar de escribirse a mano: así el dato está confirmado una
+                    // sola vez y no se reescribe distinto en cada ficha.
+                    self::technicalSheetSelect(
+                        'technical_sheet_composition_id',
+                        'Composición',
+                        ProductTechnicalSheet::SLOT_COMPOSITION,
+                        'No se podrá mencionar la composición en la descripción.',
+                    ),
 
-                    TextInput::make('fit')
-                        ->label('Ajuste / tallaje')
-                        ->maxLength(255)
-                        ->live(onBlur: true),
+                    self::technicalSheetSelect(
+                        'technical_sheet_fit_id',
+                        'Ajuste / tallaje',
+                        ProductTechnicalSheet::SLOT_FIT,
+                        'No se podrá mencionar el corte ni el tallaje.',
+                    ),
+
+                    self::technicalSheetSelect(
+                        'technical_sheet_care_id',
+                        'Cuidados',
+                        ProductTechnicalSheet::SLOT_CARE,
+                        'No se podrán mencionar los cuidados.',
+                    ),
+
+                    self::technicalSheetSelect(
+                        'technical_sheet_size_guide_id',
+                        'Guía de tallas',
+                        ProductTechnicalSheet::SLOT_SIZE_GUIDE,
+                        'La descripción no incluirá tabla de medidas.',
+                    ),
+
+                    Textarea::make('ai_base_description')
+                        ->label('Descripción base para IA')
+                        ->rows(4)
+                        ->helperText('No se publica literalmente. Se utiliza para mejorar la propuesta generada por IA.')
+                        ->live(onBlur: true)
+                        ->columnSpanFull(),
 
                     TextInput::make('collection_context')
                         ->label('Colección o campaña')
                         ->maxLength(255)
                         ->live(onBlur: true),
 
-                    Textarea::make('care_instructions')
-                        ->label('Cuidados')
-                        ->rows(2)
-                        ->live(onBlur: true)
-                        ->columnSpan(2),
-
                     Textarea::make('notes')
                         ->label('Observaciones internas')
                         ->rows(2)
-                        ->helperText('No se envía a Shopify.')
+                        ->helperText('No se envía a Shopify ni a la IA.')
                         ->live(onBlur: true),
+
+                    // La previsualización comparte compositor con el envío a
+                    // Shopify: lo que se ve aquí es exactamente lo que se enviará.
+                    View::make('filament.forms.components.technical-sheet-preview')
+                        ->dehydrated(false)
+                        ->columnSpanFull(),
                 ]),
         ];
     }
@@ -175,6 +206,48 @@ class ProductForm
                 ->dehydrated(false)
                 ->visibleOn(['edit']),
         ];
+    }
+
+    /**
+     * Selector de un mantenimiento de ficha técnica (RFC-0008).
+     *
+     * Es `searchable` porque el catálogo crece: buscar por nombre es más rápido
+     * que recorrer una lista. Se permite dejarlo vacío —una ficha sin
+     * mantenimiento es válida— y la selección actual se incluye siempre entre
+     * las opciones para que desactivar un mantenimiento no borre en silencio lo
+     * que una ficha ya tenía.
+     *
+     * `options()` se evalúa con el estado actual del formulario, así que al
+     * cambiar el tipo de prenda el selector se recalcula (`live()` en ese campo).
+     */
+    private static function technicalSheetSelect(string $name, string $label, string $slot, string $emptyHelp): Select
+    {
+        return Select::make($name)
+            ->label($label)
+            ->searchable()
+            ->native(false)
+            ->placeholder('Sin seleccionar')
+            ->options(function (callable $get, ?Product $record) use ($slot): array {
+                $catalog = app(TechnicalSheetCatalog::class);
+
+                return $catalog->options(
+                    $slot,
+                    $catalog->typeFrom($get('product_type')),
+                    $catalog->audienceFrom($get('audience')),
+                    // `$record` es la ficha que se está editando (nula al crear).
+                    // Se pasa para que su mantenimiento actual siga entre las
+                    // opciones aunque se haya desactivado.
+                    $record?->getKey() === null ? null : (int) $record->getKey(),
+                );
+            })
+            ->getOptionLabelUsing(function (mixed $value) use ($slot): ?string {
+                // Sin esto, un mantenimiento desactivado —que ya no está entre
+                // las opciones— se mostraría como un número suelto en lugar de
+                // por su nombre.
+                return app(TechnicalSheetCatalog::class)->labelFor($slot, $value);
+            })
+            ->helperText($emptyHelp)
+            ->live();
     }
 
     /**

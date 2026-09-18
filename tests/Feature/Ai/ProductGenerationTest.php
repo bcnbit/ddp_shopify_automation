@@ -72,7 +72,10 @@ class ProductGenerationTest extends TestCase
                         tags: ['camiseta', 'algodón', 'verano'],
                     ),
                     model: 'openai/gpt-4.1',
-                    promptVersion: 'v1',
+                    // Se lee la constante en lugar de escribir la versión: si el
+                    // contrato de entrada cambia y la versión sube, esta prueba debe
+                    // seguir comprobando que se persiste la versión real, no una cifra.
+                    promptVersion: PromptBuilder::VERSION,
                     inputTokens: 100,
                     outputTokens: 50,
                     latencyMs: 1200,
@@ -123,7 +126,7 @@ class ProductGenerationTest extends TestCase
         $this->assertNotNull($content);
         $this->assertSame('Camiseta Marina', $content->title);
         $this->assertSame('openai/gpt-4.1', $content->ai_model);
-        $this->assertSame('v1', $content->prompt_version);
+        $this->assertSame(PromptBuilder::VERSION, $content->prompt_version);
         $this->assertNotNull($content->generated_at);
         $this->assertSame(ProductStatus::Review, $product->status);
     }

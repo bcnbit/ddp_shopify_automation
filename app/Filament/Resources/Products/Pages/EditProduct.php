@@ -330,7 +330,7 @@ class EditProduct extends EditRecord
             ->visible(fn (): bool => auth()->user()?->can('view', $this->getRecord()) === true)
             ->action(function () {
                 $record = $this->getRecord();
-                $record->load(['variants', 'media', 'contents']);
+                $record->load(['variants', 'media', 'contents', 'technicalSheets']);
 
                 $payload = ProductResource::toExportArray($record);
 

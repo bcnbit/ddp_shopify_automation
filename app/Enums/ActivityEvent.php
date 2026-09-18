@@ -33,6 +33,7 @@ enum ActivityEvent: string
     case Login = 'login';
     case FailedLogin = 'failed_login';
     case SecretAccessed = 'secret_accessed';
+    case ShopifyConnected = 'shopify_connected';
 
     public function label(): string
     {
@@ -61,6 +62,7 @@ enum ActivityEvent: string
             self::Login => 'Inicio de sesión',
             self::FailedLogin => 'Intento de acceso fallido',
             self::SecretAccessed => 'Acceso a credenciales',
+            self::ShopifyConnected => 'Conexión con Shopify',
         };
     }
 

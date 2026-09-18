@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Providers\Filament;
 
+use App\Http\Controllers\Shopify\ShopifyOAuthController;
 use App\Http\Middleware\EnsurePrivilegedUsersHaveTwoFactor;
+use App\Models\ShopifyInstallation;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -20,6 +22,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -70,6 +73,29 @@ class AdminPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
+            /*
+             * Instalación OAuth de Shopify (RFC-0009).
+             *
+             * Se registran aquí, y no en `routes/web.php`, para heredar exactamente
+             * el mismo grupo que el resto del panel: cookies, sesión, autenticación y
+             * el segundo factor obligatorio de `EnsurePrivilegedUsersHaveTwoFactor`.
+             *
+             * El callback lo provoca una redirección del **navegador** de la persona
+             * que inició la instalación, así que sí lleva su sesión y se le puede
+             * exigir autenticación. Su autenticidad no depende de eso, sino del `state`
+             * y del `hmac` que verifica el controlador: sin esa comprobación, cualquiera
+             * podría provocar una instalación con un enlace preparado.
+             */
+            ->authenticatedRoutes(function (): void {
+                Route::prefix('shopify')->name('shopify.oauth.')->group(function (): void {
+                    Route::get('install', [ShopifyOAuthController::class, 'install'])
+                        ->middleware('can:manage,'.ShopifyInstallation::class)
+                        ->name('install');
+
+                    Route::get('callback', [ShopifyOAuthController::class, 'callback'])
+                        ->name('callback');
+                });
+            })
             ->authMiddleware([
                 Authenticate::class,
                 EnsurePrivilegedUsersHaveTwoFactor::class,

@@ -101,7 +101,16 @@ class ProductGenerationService
      */
     public function generate(int $productId, ?string $regenerateField = null): void
     {
-        $product = Product::with(['variants', 'media', 'contents'])->find($productId);
+        $product = Product::with([
+            'variants',
+            'media',
+            'contents',
+            'technicalSheets',
+            'technicalSheetComposition',
+            'technicalSheetFit',
+            'technicalSheetCare',
+            'technicalSheetSizeGuide',
+        ])->find($productId);
 
         if ($product === null) {
             Log::info('Generación de contenido omitida: la ficha ya no existe.', ['product_id' => $productId]);

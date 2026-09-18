@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Support\Ai;
 
 use App\Models\Product;
+use App\Models\ProductTechnicalSheet;
+use App\Support\Products\TechnicalSheetSelection;
 
 /**
- * Datos confirmados que se pueden enviar a la IA (RFC-0003).
+ * Datos confirmados que se pueden enviar a la IA (RFC-0003, ampliado por RFC-0008).
  *
  * El contrato de entrada es explícito y restrictivo: se construye a partir de la
  * ficha e **incluye sólo** campos que una persona ha confirmado. Lo que no está
@@ -16,6 +18,11 @@ use App\Models\Product;
  *
  * Los campos vacíos se omiten en lugar de enviarse como nulos, para que el
  * modelo no los interprete como «dato disponible».
+ *
+ * RFC-0008 añadió dos entradas: la **copia congelada** de los mantenimientos de
+ * ficha técnica (que tiene prioridad sobre las columnas libres, para que editar
+ * un mantenimiento no cambie lo que se envía) y la **descripción base para IA**,
+ * que es contexto comercial y no un dato publicable.
  */
 final readonly class ProductFactSheet
 {
@@ -34,6 +41,9 @@ final readonly class ProductFactSheet
         public ?string $careInstructions,
         public ?string $collectionContext,
         public array $variants,
+        public ?string $sizeGuide = null,
+        public ?string $aiBaseDescription = null,
+        public bool $compositionIsMaintained = false,
     ) {}
 
     public static function fromProduct(Product $product): self
@@ -44,6 +54,8 @@ final readonly class ProductFactSheet
             'sku' => (string) $variant->sku,
         ])->all();
 
+        $technicalSheets = TechnicalSheetSelection::forProduct($product);
+
         return new self(
             internalReference: (string) $product->internal_reference,
             name: (string) $product->source_name,
@@ -51,11 +63,14 @@ final readonly class ProductFactSheet
             productType: $product->product_type?->value,
             audience: $product->audience?->value,
             price: $product->price !== null ? (string) $product->price : null,
-            composition: self::filled($product->composition),
-            fit: self::filled($product->fit),
-            careInstructions: self::filled($product->care_instructions),
+            composition: $technicalSheets->effectiveComposition(),
+            fit: $technicalSheets->effectiveFit(),
+            careInstructions: $technicalSheets->effectiveCare(),
             collectionContext: self::filled($product->collection_context),
             variants: $variants,
+            sizeGuide: self::sizeGuideText($technicalSheets->sizeGuide),
+            aiBaseDescription: $technicalSheets->aiBaseDescription,
+            compositionIsMaintained: $technicalSheets->compositionIsMaintained(),
         );
     }
 
@@ -77,6 +92,8 @@ final readonly class ProductFactSheet
             'ajuste' => $this->fit,
             'cuidados' => $this->careInstructions,
             'coleccion' => $this->collectionContext,
+            'guia_de_tallas' => $this->sizeGuide,
+            'descripcion_base_para_ia' => $this->aiBaseDescription,
         ], static fn ($value): bool => $value !== null && $value !== '');
 
         if ($this->variants !== []) {
@@ -118,6 +135,43 @@ final readonly class ProductFactSheet
     public function hasComposition(): bool
     {
         return $this->composition !== null && $this->composition !== '';
+    }
+
+    public function hasSizeGuide(): bool
+    {
+        return $this->sizeGuide !== null && $this->sizeGuide !== '';
+    }
+
+    public function hasAiBaseDescription(): bool
+    {
+        return $this->aiBaseDescription !== null && $this->aiBaseDescription !== '';
+    }
+
+    /**
+     * La guía de tallas viaja como texto plano: el modelo no necesita el marcado
+     * de la tabla para respetar el dato, y el HTML no aporta nada a la redacción.
+     */
+    private static function sizeGuideText(?ProductTechnicalSheet $guide): ?string
+    {
+        if ($guide === null) {
+            return null;
+        }
+
+        $parts = array_filter([
+            self::filled($guide->intro_note),
+            self::filled(strip_tags((string) $guide->content_html)),
+            self::filled($guide->closing_note),
+        ], static fn (?string $part): bool => $part !== null);
+
+        if ($parts === []) {
+            return null;
+        }
+
+        // Las celdas de una tabla se pegan sin separador al quitar las etiquetas,
+        // así que se normalizan los espacios para que el texto sea legible.
+        $text = preg_replace('/\s+/u', ' ', implode(' ', $parts)) ?? implode(' ', $parts);
+
+        return self::filled($text);
     }
 
     private static function filled(?string $value): ?string

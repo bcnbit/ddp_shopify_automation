@@ -1,6 +1,7 @@
 # RFC-0004 — Integración Shopify y sincronización segura
 
-**Estado:** Propuesto  
+**Estado:** Implementado (autenticación enmendada por RFC-0009)  
+**Enmendada por:** RFC-0009 — Conexión con Shopify por OAuth  
 **Depende de:** RFC-0001, RFC-0002, RFC-0003
 
 ## Objetivo
@@ -9,7 +10,15 @@ Crear y actualizar productos de Shopify con estado borrador, sin duplicados y co
 
 ## Autenticación y permisos
 
-Usar una aplicación personalizada instalada en una única tienda. Solicitar sólo scopes necesarios: lectura/escritura de productos, archivos y publicaciones si se habilita la publicación posterior. El token queda exclusivamente en backend.
+> **Enmendado por RFC-0009.** Esta sección describía una aplicación personalizada con token
+> pre-generado en el entorno. La aplicación vive en el **Shopify Dev Dashboard** y su
+> credencial es la *client secret* (`shpss_`), que **no** sirve como
+> `X-Shopify-Access-Token`. La autenticación pasa a un **flujo OAuth** que guarda un *offline
+> access token* (`shpat_`) **cifrado** en base de datos. Ver RFC-0009.
+
+Se instala una aplicación OAuth en una única tienda. Solicitar sólo scopes necesarios:
+`read_products`, `write_products`, `read_files` y `write_files`. El access token queda
+cifrado en base de datos y sólo lo lee el transporte GraphQL.
 
 Centralizar llamadas en `ShopifyProductGateway`; ninguna pantalla llama directamente a la API. Configurar versión de API por variable de entorno y registrar cabeceras de límite de llamadas.
 

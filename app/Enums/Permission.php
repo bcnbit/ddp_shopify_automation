@@ -32,6 +32,10 @@ enum Permission: string
     case ProductsSync = 'products.sync';
     case ProductsPublish = 'products.publish';
 
+    // Mantenimientos de ficha técnica (RFC-0008)
+    case TechnicalSheetsView = 'technical_sheets.view';
+    case TechnicalSheetsManage = 'technical_sheets.manage';
+
     // Operación técnica
     case SyncRetry = 'sync.retry';
     case AuditView = 'audit.view';
@@ -53,6 +57,8 @@ enum Permission: string
             self::ProductsApprove => 'Aprobar ficha',
             self::ProductsSync => 'Enviar borradores a Shopify',
             self::ProductsPublish => 'Publicar en Shopify',
+            self::TechnicalSheetsView => 'Consultar mantenimientos de ficha técnica',
+            self::TechnicalSheetsManage => 'Gestionar mantenimientos de ficha técnica',
             self::SyncRetry => 'Reintentar sincronizaciones',
             self::AuditView => 'Consultar auditoría',
             self::SettingsManage => 'Configurar conexiones y reglas',
@@ -82,6 +88,8 @@ enum Permission: string
                 self::MediaDelete->value,
                 self::ContentGenerate->value,
                 self::ProductsSync->value,
+                self::TechnicalSheetsView->value,
+                self::TechnicalSheetsManage->value,
             ],
             Role::ResponsableCatalogo->value => [
                 self::ProductsView->value,
@@ -95,6 +103,8 @@ enum Permission: string
                 self::ContentApprove->value,
                 self::ProductsApprove->value,
                 self::ProductsSync->value,
+                self::TechnicalSheetsView->value,
+                self::TechnicalSheetsManage->value,
             ],
             Role::AdminTecnico->value => self::values(),
         ];

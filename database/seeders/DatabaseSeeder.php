@@ -17,6 +17,11 @@ class DatabaseSeeder extends Seeder
         $this->call(RoleAndPermissionSeeder::class);
         $this->call(AdminUserSeeder::class);
 
+        // Los mantenimientos de ficha técnica son catálogo, no datos de
+        // demostración: sin ellos los selectores de la ficha estarían vacíos y
+        // el flujo parecería roto (RFC-0008).
+        $this->call(TechnicalSheetMaintenanceSeeder::class);
+
         if (app()->environment('local')) {
             $this->call(DemoProductSeeder::class);
         }

@@ -94,7 +94,16 @@ class ProductSyncService
      */
     public function sync(int $productId): void
     {
-        $product = Product::with(['variants', 'media', 'contents'])->find($productId);
+        $product = Product::with([
+            'variants',
+            'media',
+            'contents',
+            'technicalSheets',
+            'technicalSheetComposition',
+            'technicalSheetFit',
+            'technicalSheetCare',
+            'technicalSheetSizeGuide',
+        ])->find($productId);
 
         if ($product === null) {
             Log::info('Sincronización omitida: la ficha ya no existe.', ['product_id' => $productId]);

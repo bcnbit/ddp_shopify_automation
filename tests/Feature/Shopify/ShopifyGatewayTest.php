@@ -7,6 +7,7 @@ namespace Tests\Feature\Shopify;
 use App\Contracts\Shopify\ShopifyProductGateway;
 use App\DataObjects\Shopify\ShopifyProductPayload;
 use App\Exceptions\Shopify\ShopifyRequestFailed;
+use App\Models\ShopifyInstallation;
 use App\Services\Shopify\ShopifyProductGatewayImpl;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -312,7 +313,7 @@ class ShopifyGatewayTest extends TestCase
 
     public function test_falla_de_forma_legible_si_no_esta_configurado(): void
     {
-        config()->set('product-studio.shopify.access_token', '');
+        ShopifyInstallation::query()->delete();
 
         $product = $this->syncableProduct();
         Http::fake();

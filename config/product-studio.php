@@ -112,17 +112,44 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Integraciones (sin implementar en RFC-0001)
+    | Integraciones
     |--------------------------------------------------------------------------
     |
-    | Valores leídos del entorno. Ningún secreto se persiste en base de datos
-    | ni se serializa hacia el navegador (RFC-0000 / RFC-0001).
-    | La integración real corresponde a RFC-0003 (IA) y RFC-0004 (Shopify).
+    | La integración de IA corresponde a RFC-0003 (su clave sí se lee del
+    | entorno) y la de Shopify a RFC-0004 con la autenticación enmendada por
+    | RFC-0009.
+    |
+    | Regla general (RFC-0000 / RFC-0001): ningún secreto se versiona, se
+    | registra en logs ni se serializa hacia el navegador.
+    |
+    | La única excepción deliberada es el access token de Shopify, que **sí** se
+    | persiste —cifrado con APP_KEY— porque lo produce un flujo OAuth y pertenece
+    | a una instalación concreta (RFC-0009 §4.2).
     |
     */
 
+    /*
+     * Conexión con Shopify por OAuth (RFC-0009).
+     *
+     * Aquí sólo viven las credenciales **de la aplicación** y los parámetros de
+     * la API. El access token no está en el entorno: lo produce el flujo de
+     * instalación y se guarda cifrado en `shopify_installations`.
+     *
+     * `api_key` (client ID) identifica la aplicación y no autoriza nada.
+     * `api_secret` es la client secret (`shpss_`): firma el intercambio OAuth y
+     * **nunca** se envía en `X-Shopify-Access-Token` ni al navegador.
+     *
+     * `expected_shop_domain` es una guarda opcional: si está definida, el callback
+     * rechaza una instalación que venga de otra tienda.
+     */
     'shopify' => [
-        'shop_domain' => env('SHOPIFY_SHOP_DOMAIN'),
+        'api_key' => env('SHOPIFY_API_KEY'),
+        'api_secret' => env('SHOPIFY_API_SECRET'),
+        'expected_shop_domain' => env('SHOPIFY_SHOP_DOMAIN'),
+        // Sólo para aplicaciones distribuidas como públicas. Las personalizadas
+        // están exentas de la exigencia de tokens expirables y el refresco no
+        // está implementado (RFC-0009 §4.3).
+        'oauth_expiring' => env('SHOPIFY_OAUTH_EXPIRING', false),
         // Shopify retira una versión cada trimestre y, ante una versión no
         // soportada, responde con la más antigua accesible: el contrato dejaría
         // de ser predecible. Se fija la última estable y se sube por entorno.
@@ -136,7 +163,6 @@ return [
         'media_poll_attempts' => (int) env('SHOPIFY_MEDIA_POLL_ATTEMPTS', 5),
         'media_poll_sleep_ms' => (int) env('SHOPIFY_MEDIA_POLL_SLEEP_MS', 1000),
         'metafield_namespace' => env('SHOPIFY_METAFIELD_NAMESPACE', 'product_studio'),
-        'access_token' => env('SHOPIFY_ACCESS_TOKEN'),
         'timeout' => (int) env('SHOPIFY_TIMEOUT', 30),
         'default_status' => 'DRAFT',
     ],

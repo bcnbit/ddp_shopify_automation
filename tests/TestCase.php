@@ -40,4 +40,16 @@ abstract class TestCase extends BaseTestCase
     {
         return User::factory()->adminTecnico()->create();
     }
+
+    /**
+     * Administrador técnico con segundo factor ya configurado.
+     *
+     * El panel redirige al perfil a un administrador sin TOTP (RFC-0001), así que
+     * cualquier prueba que quiera llegar a una pantalla concreta —y no al perfil—
+     * necesita este usuario.
+     */
+    protected function twoFactorAdmin(): User
+    {
+        return User::factory()->adminTecnico()->withTwoFactor()->create();
+    }
 }

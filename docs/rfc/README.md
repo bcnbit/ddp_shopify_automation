@@ -29,6 +29,9 @@ Incluye camisetas, sudaderas, bolsas y prendas simples con variantes por talla y
 6. RFC-0005 — Medios, variantes y validaciones.
 7. RFC-0006 — Pruebas y aceptación operativa.
 8. RFC-0007 — Despliegue, observabilidad y operación.
+9. RFC-0008 — Mantenimientos de ficha técnica (enmienda a RFC-0002/0003/0004).
+10. RFC-0009 — Conexión con Shopify por OAuth (enmienda a RFC-0004/0007).
+11. RFC-0010 — Despliegue en producción (desarrolla RFC-0007).
 
 Cada RFC debe completarse con pruebas antes de avanzar a la siguiente. Si una decisión posterior cambia un contrato, se crea una RFC de enmienda; no se modifica silenciosamente un flujo ya implementado.
 

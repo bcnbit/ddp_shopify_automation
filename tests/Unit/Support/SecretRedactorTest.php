@@ -18,6 +18,35 @@ class SecretRedactorTest extends BaseTestCase
         $this->redactor = new SecretRedactor;
     }
 
+    /**
+     * La API secret key de la aplicación (`shpss_`) no es un access token, pero es
+     * una credencial con la que se firman los intercambios OAuth. Si aparece en un
+     * mensaje de error —por ejemplo, porque Shopify la repite en su respuesta— debe
+     * quedar enmascarada igual que un token (RFC-0009).
+     */
+    public function test_enmascara_la_api_secret_key_de_shopify(): void
+    {
+        // La credencial se sustituye dentro del texto, no se descarta el mensaje:
+        // el resto del error sigue siendo útil para diagnosticar.
+        $this->assertSame(
+            'Falló con '.SecretRedactor::MASK.' al canjear',
+            $this->redactor->redactString('Falló con shpss_1234567890abcdef al canjear'),
+        );
+
+        // Y no debe quedar ningún rastro del valor original.
+        $this->assertStringNotContainsString(
+            'shpss_1234567890abcdef',
+            (string) $this->redactor->redactString('shpss_1234567890abcdef'),
+        );
+
+        // Y también cuando viaja como valor de una clave sensible.
+        $result = $this->redactor->redact([
+            'client_secret' => 'shpss_1234567890abcdef',
+        ]);
+
+        $this->assertSame(SecretRedactor::MASK, $result['client_secret']);
+    }
+
     public function test_enmascara_claves_sensibles(): void
     {
         $result = $this->redactor->redact([

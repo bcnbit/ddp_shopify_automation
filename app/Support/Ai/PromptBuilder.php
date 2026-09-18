@@ -15,7 +15,7 @@ use App\DataObjects\Ai\ContentGenerationRequest;
  */
 class PromptBuilder
 {
-    public const VERSION = 'v1';
+    public const VERSION = 'v2';
 
     /**
      * Esquema de salida exigido, tal cual aparece en RFC-0003.
@@ -70,6 +70,8 @@ class PromptBuilder
             }
         }
 
+        $lines = [...$lines, ...$this->baseDescriptionRules($request)];
+
         $lines = [...$lines, ...$this->editorialRules()];
         $lines = [...$lines, ...$this->prohibitions($request)];
         $lines = [...$lines, ...$this->outputContract()];
@@ -106,6 +108,31 @@ class PromptBuilder
 
         return "Genera la propuesta de contenido para esta ficha.\n\n"
             .($json === false ? '{}' : $json);
+    }
+
+    /**
+     * Instrucciones sobre la descripción base para IA (RFC-0008).
+     *
+     * Es contexto comercial, no un dato publicable: el modelo debe usarla para
+     * orientar el tono y el enfoque, nunca para copiarla ni para ampliarla con
+     * datos que no estén confirmados.
+     *
+     * @return list<string>
+     */
+    private function baseDescriptionRules(ContentGenerationRequest $request): array
+    {
+        if (! $request->facts->hasAiBaseDescription()) {
+            return [];
+        }
+
+        return [
+            '',
+            'CONTEXTO COMERCIAL APORTADO POR LA MARCA (campo «descripcion_base_para_ia»):',
+            'Es material de apoyo, NO texto publicable. Úsalo sólo para orientar el enfoque,',
+            'el tono y los rasgos que conviene destacar. No lo copies literalmente en la',
+            'descripción ni lo amplíes con datos que no estén en DATOS CONFIRMADOS.',
+            'Si contradice un DATO CONFIRMADO, prevalece el dato confirmado.',
+        ];
     }
 
     /**

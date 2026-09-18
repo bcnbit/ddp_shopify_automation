@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\ProductContent;
 use App\Models\ProductMedia;
 use App\Models\ProductVariant;
+use App\Models\ShopifyInstallation;
 use App\Models\User;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -82,16 +83,30 @@ trait BuildsSyncableProducts
 
     /**
      * Configura el conector con valores de prueba. No es un secreto real.
+     *
+     * Desde RFC-0009 el conector **no** lee el token del entorno: lo toma de la
+     * instalación guardada. Así que «configurar Shopify» en una prueba es crear esa
+     * instalación, no escribir una variable de configuración. Si sólo se tocara la
+     * configuración, la prueba pasaría por el camino de «no configurado» y no
+     * ejercitaría el transporte, que es justo lo que debe verificar.
      */
     protected function configureShopify(): void
     {
-        config()->set('product-studio.shopify.shop_domain', 'dies-de-platja.myshopify.com');
-        config()->set('product-studio.shopify.access_token', 'shpat_token-de-prueba');
+        config()->set('product-studio.shopify.expected_shop_domain', 'dies-de-platja.myshopify.com');
+        // Credenciales de APLICACIÓN: las exige la instalación OAuth (RFC-0009). Son
+        // valores de prueba, no secretos reales, y por eso pueden vivir en el repo.
+        config()->set('product-studio.shopify.api_key', 'client-id-de-prueba');
+        config()->set('product-studio.shopify.api_secret', 'shpss_secreto-de-prueba');
         config()->set('product-studio.shopify.api_version', '2026-07');
         // Sin reintentos: se comprueba la traducción del error, no el backoff.
         config()->set('product-studio.shopify.retry_times', 0);
         config()->set('product-studio.shopify.media_poll_sleep_ms', 0);
         config()->set('product-studio.shopify.media_poll_attempts', 1);
+
+        ShopifyInstallation::factory()->create([
+            'shop_domain' => 'dies-de-platja.myshopify.com',
+            'access_token' => 'shpat_token-de-prueba',
+        ]);
     }
 
     /**

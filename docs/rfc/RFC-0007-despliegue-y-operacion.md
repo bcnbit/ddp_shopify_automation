@@ -1,6 +1,7 @@
 # RFC-0007 — Despliegue, observabilidad y operación
 
-**Estado:** Propuesto  
+**Estado:** Propuesto (procedimiento concreto en RFC-0010)  
+**Desarrollada por:** RFC-0010 — Despliegue en producción  
 **Depende de:** RFC-0006
 
 ## Entornos

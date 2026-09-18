@@ -10,15 +10,24 @@ use App\Models\ActivityLog;
 use App\Models\Product;
 use App\Models\ProductContent;
 use App\Models\ProductMedia;
+use App\Models\ProductTechnicalSheet;
 use App\Models\ProductVariant;
+use App\Models\ShopifyInstallation;
 use App\Models\SyncAttempt;
+use App\Models\TechnicalSheetCare;
+use App\Models\TechnicalSheetComposition;
+use App\Models\TechnicalSheetFit;
+use App\Models\TechnicalSheetSizeGuide;
 use App\Models\User;
 use App\Policies\ActivityLogPolicy;
 use App\Policies\ProductContentPolicy;
 use App\Policies\ProductMediaPolicy;
 use App\Policies\ProductPolicy;
+use App\Policies\ProductTechnicalSheetPolicy;
 use App\Policies\ProductVariantPolicy;
+use App\Policies\ShopifyInstallationPolicy;
 use App\Policies\SyncAttemptPolicy;
+use App\Policies\TechnicalSheetEntryPolicy;
 use App\Policies\UserPolicy;
 use App\Services\Ai\NullAiClient;
 use App\Services\Ai\OpenRouterClient;
@@ -26,6 +35,7 @@ use App\Services\Shopify\ShopifyProductGatewayImpl;
 use App\Support\Audit\ActivityRecorder;
 use App\Support\Security\HtmlSanitizer;
 use App\Support\Security\SecretRedactor;
+use App\Support\Security\TechnicalSheetHtmlSanitizer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\URL;
@@ -36,6 +46,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(HtmlSanitizer::class);
+        $this->app->singleton(TechnicalSheetHtmlSanitizer::class);
         $this->app->singleton(SecretRedactor::class);
         $this->app->singleton(ActivityRecorder::class);
 
@@ -103,7 +114,19 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(ProductMedia::class, ProductMediaPolicy::class);
         Gate::policy(ProductContent::class, ProductContentPolicy::class);
         Gate::policy(SyncAttempt::class, SyncAttemptPolicy::class);
+
+        // Los cuatro mantenimientos comparten Policy porque comparten cabecera y
+        // reparto de permisos (RFC-0008). Se registran uno a uno: una Policy
+        // sobre la clase abstracta no se aplicaría a los modelos concretos.
+        Gate::policy(TechnicalSheetComposition::class, TechnicalSheetEntryPolicy::class);
+        Gate::policy(TechnicalSheetFit::class, TechnicalSheetEntryPolicy::class);
+        Gate::policy(TechnicalSheetCare::class, TechnicalSheetEntryPolicy::class);
+        Gate::policy(TechnicalSheetSizeGuide::class, TechnicalSheetEntryPolicy::class);
+        Gate::policy(ProductTechnicalSheet::class, ProductTechnicalSheetPolicy::class);
         Gate::policy(ActivityLog::class, ActivityLogPolicy::class);
+        // La conexión con Shopify es configuración: la misma Policy cubre ver la
+        // pantalla y gestionarla (RFC-0009 §10).
+        Gate::policy(ShopifyInstallation::class, ShopifyInstallationPolicy::class);
         Gate::policy(User::class, UserPolicy::class);
     }
 

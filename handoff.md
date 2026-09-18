@@ -146,6 +146,8 @@ imágenes apuntaban a `localhost:8000` y salían rotas.
 | RFC-0002 | Flujo de alta, edición y aprobación | **Implementado** (falta doc de fase) |
 | RFC-0003 | IA, SEO y contenido (OpenRouter) | **Implementado** (falta doc de fase) |
 | RFC-0004 | Integración Shopify e idempotencia | **Implementado** (`docs/implementation/RFC-0004.md`) |
+| RFC-0008 | Mantenimientos de ficha técnica | **Implementado** (`docs/rfc/RFC-0008-…`) |
+| RFC-0009 | Conexión con Shopify por OAuth | **Implementado** (`docs/implementation/RFC-0009.md`) |
 | RFC-0005 | Medios, variantes y validaciones | Parcial (dentro de RFC-0001/0002) |
 | RFC-0006 | Pruebas y aceptación | No iniciado |
 | RFC-0007 | Despliegue y observabilidad | No iniciado |
@@ -220,6 +222,11 @@ respuesta se valida contra un esquema JSON estricto; si no cumple, se rechaza.
 ### 5.4 Comandos de consola
 
 ```bash
+> **Desde RFC-0009 el token ya no se escribe en `.env`.** La vía normal es el panel:
+> **Configuración → Conexión con Shopify → Conectar con Shopify**. Ahí se instala por OAuth, se
+> guarda el token cifrado y se comprueba la conexión de sólo lectura (dominio, token, scopes y
+> acceso a productos). `shopify:check` sigue existiendo para soporte y despliegues sin navegador.
+
 php artisan shopify:check                        # diagnostica sin modificar nada
 php artisan shopify:sync DDP-14666 --dry-run     # ver qué enviaría
 php artisan shopify:sync DDP-14666               # enviar como borrador
@@ -527,6 +534,24 @@ Se consultó la documentación vigente antes de implementar. **No asumir de memo
 6. Los metafields de la app (`$app`) quedan ocultos de la Storefront API por defecto, lo que
    satisface «no visible para la tienda».
 
+### Credenciales y OAuth (RFC-0009)
+
+7. **Prefijos de credenciales de Shopify.** Los *access token* —offline y online— empiezan por
+   `shpat_`; los de delegado, por `shppa_`. La `shpss_` es la **API secret key** de la
+   aplicación y **no** se envía en `X-Shopify-Access-Token`: la Admin API la rechaza.
+8. **Token offline:** en la URL de autorización se **omiten** `grant_options[]`. Añadirlos con
+   `per-user` devolvería un token *online*, que caduca con la sesión de la persona.
+9. **Canje:** `POST https://{shop}.myshopify.com/admin/oauth/access_token` con `client_id`,
+   `client_secret`, `code` y `expiring` opcional.
+10. **Tokens expirables:** son obligatorios para las **apps públicas** antes del 1 de enero de
+    2027, y la exigencia **no aplica a las *custom apps***. Por eso el valor por defecto aquí es
+    un token no expirable; `SHOPIFY_OAUTH_EXPIRING` lo cambia, pero **el refresco no está
+    implementado** (ver §12.4).
+11. **Validación del callback:** quitar `hmac`, ordenar los parámetros alfabéticamente como
+    `k=v`, unirlos con `&` y calcular `HMAC-SHA256` en hexadecimal con la API secret key,
+    comparando en tiempo constante. El `state` se compara además contra el de la sesión.
+12. **Scopes de archivos:** `stagedUploadsCreate` + `fileCreate` exigen `write_files`.
+
 ---
 
 ## 12. Por dónde ampliar
@@ -573,6 +598,12 @@ Encaja en RFC-0005.
 
 ### 12.4 Deuda técnica conocida
 
+- **Refresco de tokens expirables (RFC-0009):** `SHOPIFY_OAUTH_EXPIRING=true` pide un token que
+  caduca en 60 minutos y **no hay job de refresco**. Con el valor por defecto (`false`) el token
+  no expira y no hace falta. Bloquea sólo una futura distribución pública de la aplicación.
+  El `refresh_token` tampoco se guarda: añadirlo es una columna más.
+- **Webhook `app/uninstalled` (RFC-0009):** si se desinstala desde Shopify, la fila local
+  permanece; la pantalla seguirá diciendo «conectada» hasta que una comprobación devuelva 401.
 - **Job de publicación:** fuera del MVP por decisión del RFC. La Policy ya existe
   (`ProductPolicy::publish`) pero `ShopifyOperations` **no tiene** la mutación
   (`productUpdate(status: ACTIVE)` / `publishablePublish`). Habría que verificarla contra la
@@ -601,7 +632,10 @@ Encaja en RFC-0005.
 - **La IA no aprueba nada**: solo propone; una persona revisa campo a campo.
 - **`sync_attempts` es append-only**: un reintento crea un intento nuevo con la misma clave
   de idempotencia.
-- **Ningún secreto se versiona ni se persiste**: los tokens se leen del entorno, el redactor
+- **Ningún secreto se versiona**: las credenciales de aplicación (`shpss_`) y las claves de IA
+  viven en el entorno, y el redactor las enmascara en logs y auditoría.
+  **Excepción deliberada (RFC-0009):** el access token de Shopify (`shpat_`) **sí** se persiste,
+  **cifrado con `APP_KEY`**, porque lo produce un flujo OAuth y pertenece a una instalación.
   de secretos limpia logs y auditoría, y **este documento no contiene credenciales**.
 - **Las relaciones padre→hijo que alimentan Policies llevan `chaperone('product')`.**
 

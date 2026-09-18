@@ -9,7 +9,9 @@ use App\Enums\ProductStatus;
 use App\Enums\SyncStatus;
 use App\Exceptions\Shopify\ShopifyRequestFailed;
 use App\Models\Product;
+use App\Models\ShopifyInstallation;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\BuildsSyncableProducts;
 use Tests\Support\FakeShopifyGateway;
@@ -53,44 +55,111 @@ class ShopifyCommandsTest extends TestCase
 
     // ------------------------------------------------------- shopify:check
 
-    public function test_check_avisa_cuando_no_hay_credenciales(): void
+    /**
+     * Respuesta correcta de la comprobación de sólo lectura (RFC-0009).
+     *
+     * Es el documento `ConnectionCheck`: tienda, scopes concedidos y una página de
+     * productos. Se centraliza aquí para que las pruebas de la pantalla y las del
+     * comando comprueben el mismo contrato.
+     *
+     * @param  list<string>  $scopes
+     * @return array<string, mixed>
+     */
+    private function connectionCheckResponse(array $scopes = ShopifyInstallation::REQUIRED_SCOPES): array
     {
-        config()->set('product-studio.shopify.shop_domain', '');
-        config()->set('product-studio.shopify.access_token', '');
+        return [
+            'data' => [
+                'shop' => [
+                    'name' => 'Dies de Platja',
+                    'myshopifyDomain' => 'dies-de-platja.myshopify.com',
+                ],
+                'currentAppInstallation' => [
+                    'accessScopes' => array_map(static fn (string $scope): array => ['handle' => $scope], $scopes),
+                ],
+                'products' => [
+                    'nodes' => [['id' => 'gid://shopify/Product/1']],
+                ],
+            ],
+        ];
+    }
 
-        $this->gateway->configured = false;
+    private function fakeConnectionCheck(array $scopes = ShopifyInstallation::REQUIRED_SCOPES): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(['*' => Http::response($this->connectionCheckResponse($scopes))]);
+    }
+
+    public function test_check_avisa_cuando_la_aplicacion_no_esta_configurada(): void
+    {
+        config()->set('product-studio.shopify.api_key', '');
+        config()->set('product-studio.shopify.api_secret', '');
 
         $this->artisan('shopify:check')
-            ->expectsOutputToContain('Shopify no está configurado')
-            ->expectsOutputToContain('SHOPIFY_SHOP_DOMAIN')
+            ->expectsOutputToContain('La aplicación de Shopify no está configurada')
+            ->expectsOutputToContain('SHOPIFY_API_SECRET')
+            ->assertExitCode(1);
+    }
+
+    public function test_check_avisa_cuando_no_hay_tienda_conectada(): void
+    {
+        // La aplicación está configurada pero nadie ha instalado todavía.
+        config()->set('product-studio.shopify.api_key', 'client-id-de-prueba');
+        config()->set('product-studio.shopify.api_secret', 'shpss_secreto-de-prueba');
+        ShopifyInstallation::query()->delete();
+
+        $this->artisan('shopify:check')
+            ->expectsOutputToContain('No hay ninguna tienda conectada')
+            ->expectsOutputToContain('Conectar con Shopify')
             ->assertExitCode(1);
     }
 
     public function test_check_confirma_la_conexion_cuando_esta_configurado(): void
     {
+        $this->fakeConnectionCheck();
+
         $this->artisan('shopify:check')
             ->expectsOutputToContain('Conexión correcta')
+            ->expectsOutputToContain('Permisos concedidos')
             ->assertExitCode(0);
     }
 
     public function test_check_explica_un_token_invalido(): void
     {
-        $this->gateway->alwaysFailWith = ShopifyRequestFailed::permanent(
-            'El token de Shopify no es válido o no tiene permisos suficientes. Avisa al administrador técnico.',
-            'unauthorized',
-        );
+        Http::preventStrayRequests();
+        Http::fake(['*' => Http::response(['errors' => [['message' => 'Invalid API key or access token']]], 401)]);
 
         $this->artisan('shopify:check')
-            ->expectsOutputToContain('token de Shopify no es válido')
+            ->expectsOutputToContain('no es válido o no tiene permisos')
             ->assertExitCode(1);
     }
 
     public function test_check_indica_cuantas_fichas_estan_listas(): void
     {
         $this->syncableProduct();
+        $this->fakeConnectionCheck();
 
         $this->artisan('shopify:check')
             ->expectsOutputToContain('Fichas listas para enviar: 1')
+            ->assertExitCode(0);
+    }
+
+    public function test_check_avisa_si_faltan_permisos(): void
+    {
+        $this->fakeConnectionCheck(['read_products']);
+
+        $this->artisan('shopify:check')
+            ->expectsOutputToContain('write_products')
+            ->assertExitCode(1);
+    }
+
+    public function test_check_nunca_imprime_el_token_ni_la_client_secret(): void
+    {
+        config()->set('product-studio.shopify.api_secret', 'shpss_marca-de-prueba');
+        $this->fakeConnectionCheck();
+
+        $this->artisan('shopify:check')
+            ->doesntExpectOutputToContain('shpss_marca-de-prueba')
+            ->doesntExpectOutputToContain('shpat_token-de-prueba')
             ->assertExitCode(0);
     }
 

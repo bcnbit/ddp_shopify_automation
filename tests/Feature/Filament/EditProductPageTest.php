@@ -7,6 +7,7 @@ namespace Tests\Feature\Filament;
 use App\Enums\ProductStatus;
 use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\Pages\EditProduct;
+use App\Filament\Resources\Products\ProductResource;
 use App\Jobs\GenerateProductContentJob;
 use App\Models\Product;
 use App\Models\ProductContent;
@@ -44,12 +45,37 @@ class EditProductPageTest extends TestCase
             ->test(EditProduct::class, ['record' => $product->getKey()])
             ->fillForm([
                 'source_name' => 'Camiseta corregida',
-                'composition' => '100% algodón',
+                'ai_base_description' => 'Inspirada en los atardeceres de la cala.',
             ])
             ->call('autoSave');
 
         $this->assertSame('Camiseta corregida', $product->refresh()->source_name);
-        $this->assertSame('100% algodón', $product->composition);
+        $this->assertSame('Inspirada en los atardeceres de la cala.', $product->ai_base_description);
+    }
+
+    /**
+     * RFC-0008 sustituyó el campo libre de composición por un mantenimiento.
+     *
+     * La columna sigue existiendo como respaldo de fichas antiguas, pero ya no se
+     * escribe desde el formulario: si alguien colara la clave en el estado del
+     * formulario, el guardado automático debe ignorarla en lugar de sobrescribir
+     * el dato confirmado del catálogo.
+     */
+    public function test_el_formulario_ya_no_escribe_la_composicion_libre(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->productFor($operadora);
+
+        $product->update(['composition' => '100% algodón peinado']);
+
+        $this->assertNotContains('composition', ProductResource::editableProductAttributes());
+
+        Livewire::actingAs($operadora)
+            ->test(EditProduct::class, ['record' => $product->getKey()])
+            ->fillForm(['source_name' => 'Otro nombre'])
+            ->call('autoSave');
+
+        $this->assertSame('100% algodón peinado', $product->refresh()->composition);
     }
 
     public function test_el_guardado_automatico_deja_rastro_en_auditoria(): void

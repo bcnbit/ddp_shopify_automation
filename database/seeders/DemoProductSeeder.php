@@ -8,6 +8,10 @@ use App\Models\Product;
 use App\Models\ProductContent;
 use App\Models\ProductMedia;
 use App\Models\ProductVariant;
+use App\Models\TechnicalSheetCare;
+use App\Models\TechnicalSheetComposition;
+use App\Models\TechnicalSheetFit;
+use App\Models\TechnicalSheetSizeGuide;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Storage;
@@ -25,10 +29,21 @@ class DemoProductSeeder extends Seeder
         $operadora = User::whereHas('roles', fn ($q) => $q->where('name', 'operadora'))->first()
             ?? User::factory()->operadora()->create();
 
+        // La ficha de demostración usa los mantenimientos de RFC-0008 en lugar
+        // de textos sueltos: es la forma de que el ejemplo enseñe el flujo real.
         $product = Product::factory()
-            ->withConfirmedFacts()
             ->inReview()
-            ->create(['created_by' => $operadora->getKey()]);
+            ->create([
+                'created_by' => $operadora->getKey(),
+                'composition' => null,
+                'fit' => null,
+                'care_instructions' => null,
+                'ai_base_description' => 'Inspirada en las tardes de agosto junto al mar: algodón fresco y acabado mate.',
+                'technical_sheet_composition_id' => $this->idOf(TechnicalSheetComposition::class, 'COMP-ALG-100'),
+                'technical_sheet_fit_id' => $this->idOf(TechnicalSheetFit::class, 'FIT-UNISEX-REG'),
+                'technical_sheet_care_id' => $this->idOf(TechnicalSheetCare::class, 'CARE-ALG-BASICO'),
+                'technical_sheet_size_guide_id' => $this->idOf(TechnicalSheetSizeGuide::class, 'TALLA-CAMISETA-ADULTO'),
+            ]);
 
         ProductContent::factory()
             ->aiGenerated()
@@ -55,6 +70,22 @@ class DemoProductSeeder extends Seeder
         }
 
         $this->command?->info('Ficha de demostración creada: '.$product->internal_reference);
+    }
+
+    /**
+     * Identificador del mantenimiento por código, o `null` si no existe.
+     *
+     * El catálogo lo crea `TechnicalSheetMaintenanceSeeder`; si alguien ejecuta
+     * este seeder por separado, la ficha se crea igualmente y sin mantenimiento
+     * en lugar de fallar.
+     *
+     * @param  class-string  $model
+     */
+    private function idOf(string $model, string $code): ?int
+    {
+        $id = $model::query()->where('code', $code)->value('id');
+
+        return $id === null ? null : (int) $id;
     }
 
     /**

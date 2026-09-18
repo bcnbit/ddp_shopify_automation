@@ -146,6 +146,37 @@ final class ShopifyOperations
     }
     GQL;
 
+    /**
+     * Comprobación de sólo lectura de la conexión (RFC-0009 §7).
+     *
+     * Es una `query` sin argumentos y deliberadamente barata: no crea ni modifica
+     * nada, y responde a las cuatro preguntas de la petición a la vez —dominio
+     * canónico, validez del token, scopes concedidos y acceso a productos—.
+     *
+     * Se mantiene en una sola llamada para que no pueda degenerar en una batería de
+     * peticiones: `products(first: 1)` basta para saber si la lectura está permitida
+     * sin recorrer el catálogo. El nombre de la tienda se incluye porque ayuda a la
+     * persona a confirmar de un vistazo que está conectando donde cree.
+     */
+    public const CONNECTION_CHECK = <<<'GQL'
+    query ConnectionCheck {
+      shop {
+        name
+        myshopifyDomain
+      }
+      currentAppInstallation {
+        accessScopes {
+          handle
+        }
+      }
+      products(first: 1) {
+        nodes {
+          id
+        }
+      }
+    }
+    GQL;
+
     /** No instanciable: sólo agrupa documentos. */
     private function __construct() {}
 }
