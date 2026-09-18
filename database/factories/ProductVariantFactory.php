@@ -48,7 +48,9 @@ class ProductVariantFactory extends Factory
             'inventory_policy' => InventoryPolicy::Deny,
             'inventory_quantity' => null,
             'shopify_variant_gid' => null,
-            'position' => 0,
+            // Sin `position`: la asigna el modelo al crear, encadenando con las
+            // variantes que ya tenga el producto. Fijarla aquí a 0 dejaba todas las
+            // variantes de una ficha en la misma posición.
         ];
     }
 

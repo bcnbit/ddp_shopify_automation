@@ -57,6 +57,32 @@ class ProductVariant extends Model
 
     protected static function booted(): void
     {
+        /**
+         * La posición se asigna sola al crear, si nadie la ha indicado.
+         *
+         * Sin esto, una variante añadida desde el panel se quedaba con el valor por
+         * defecto de la columna (`0`), igual que todas las anteriores, y el listado
+         * —que ordena por `position`— salía en un orden arbitrario. Se detectó en una
+         * ficha con cinco tallas, todas con posición 0.
+         *
+         * Se respeta una posición explícita: la tabla es reordenable a mano y una
+         * persona puede querer colocar una variante en un sitio concreto.
+         */
+        static::creating(function (self $variant): void {
+            if ($variant->position !== null) {
+                return;
+            }
+
+            $max = static::query()
+                ->where('product_id', $variant->product_id)
+                ->max('position');
+
+            // La primera variante de una ficha empieza en 0, no en 1: es el valor
+            // con el que ya están las fichas existentes y evita un salto visible
+            // entre lo creado a mano y lo creado por un botón.
+            $variant->position = $max === null ? 0 : ((int) $max) + 1;
+        });
+
         static::saving(function (self $variant): void {
             $variant->sku_normalized = SkuNormalizer::normalize($variant->sku);
 

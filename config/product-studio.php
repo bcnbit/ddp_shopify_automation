@@ -58,6 +58,17 @@ return [
         'max_options' => 2,
         'option_names' => ['Color', 'Talla'],
         'default_inventory_policy' => env('PRODUCT_STUDIO_INVENTORY_POLICY', 'deny'),
+
+        /*
+        | Tallas del botón «Añadir Variante Tallas» (RFC-0002).
+        |
+        | Se declaran aquí y no en el código del panel para poder ajustarlas sin
+        | tocar la interfaz, y para que las pruebas no dependan de una lista
+        | incrustada. El orden es el orden en que se crean y se muestran.
+        |
+        | `2XL` y no `XXL`: es la etiqueta que usa la tienda.
+        */
+        'standard_sizes' => ['S', 'M', 'L', 'XL', '2XL'],
         'initial_inventory_quantity' => null,
     ],
 

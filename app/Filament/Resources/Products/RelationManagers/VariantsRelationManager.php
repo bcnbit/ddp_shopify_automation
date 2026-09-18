@@ -6,6 +6,9 @@ namespace App\Filament\Resources\Products\RelationManagers;
 
 use App\Enums\InventoryPolicy;
 use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Services\Products\ProductVariantService;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -13,10 +16,12 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use RuntimeException;
 
 /**
  * Matriz de variantes color × talla (RFC-0002 / RFC-0005).
@@ -134,6 +139,63 @@ class VariantsRelationManager extends RelationManager
                 //
             ])
             ->headerActions([
+                // Este va **antes** que `CreateAction` a propósito: Filament
+                // respeta el orden del array y el botón debe quedar a su izquierda.
+                Action::make('addSizes')
+                    ->label('Añadir Variante Tallas')
+                    ->icon('heroicon-o-squares-plus')
+                    ->color('gray')
+                    ->visible(fn (): bool => $this->canEditOwner())
+                    ->requiresConfirmation()
+                    ->modalHeading('¿Añadir las tallas estándar?')
+                    ->modalDescription(function (): string {
+                        $faltan = $this->missingSizes();
+
+                        if ($faltan === []) {
+                            return 'Esta ficha ya tiene todas las tallas estándar: no hay nada que añadir.';
+                        }
+
+                        return 'Se añadirán las tallas que falten: '.implode(', ', $faltan)
+                            .'. El resto de variantes no se toca.';
+                    })
+                    ->modalSubmitActionLabel('Añadir tallas')
+                    ->action(function (): void {
+                        $product = $this->ownerRecord;
+
+                        try {
+                            $created = app(ProductVariantService::class)->generateSizes(
+                                $product,
+                                auth()->user(),
+                            );
+                        } catch (RuntimeException $exception) {
+                            Notification::make()
+                                ->title('No se han podido añadir las tallas')
+                                ->body($exception->getMessage())
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        if ($created === 0) {
+                            // No es un error: la ficha ya tenía todas las tallas.
+                            // Conviene decirlo, o parece que el botón no funciona.
+                            Notification::make()
+                                ->title('No había nada que añadir')
+                                ->body('Esta ficha ya tiene todas las tallas estándar.')
+                                ->warning()
+                                ->send();
+
+                            return;
+                        }
+
+                        Notification::make()
+                            ->title($created === 1 ? 'Talla añadida' : $created.' tallas añadidas')
+                            ->body('Se han creado con el precio de la ficha. Las imágenes no se han tocado.')
+                            ->success()
+                            ->send();
+                    }),
+
                 CreateAction::make()
                     ->label('Añadir variante')
                     ->visible(fn (): bool => $this->canEditOwner()),
@@ -152,6 +214,41 @@ class VariantsRelationManager extends RelationManager
                         ->visible(fn (): bool => $this->canEditOwner()),
                 ]),
             ]);
+    }
+
+    /**
+     * Tallas estándar que todavía no tiene la ficha, en el orden configurado.
+     *
+     * Se calcula **en el servidor** y con la misma regla que usa el servicio
+     * (comparar la combinación color×talla): si aquí se contara de otra forma, el
+     * aviso diría «se añadirán 2» y luego se crearían 3, o al revés.
+     *
+     * @return list<string>
+     */
+    private function missingSizes(): array
+    {
+        /** @var list<string> $sizes */
+        $sizes = array_values((array) config('product-studio.variants.standard_sizes', []));
+
+        // Se reutiliza la clave del servicio: una sola definición de «esta
+        // combinación ya existe».
+        $existing = $this->ownerRecord->variants()->get()->map(
+            static fn (ProductVariant $variant): string => ProductVariantService::combinationKey(
+                (string) $variant->option1_value,
+                (string) $variant->option2_value,
+            ),
+        )->all();
+
+        $missing = [];
+
+        foreach ($sizes as $size) {
+            // Sin color, la clave del servicio queda «|M».
+            if (! in_array(ProductVariantService::combinationKey('', $size), $existing, true)) {
+                $missing[] = $size;
+            }
+        }
+
+        return $missing;
     }
 
     /**
