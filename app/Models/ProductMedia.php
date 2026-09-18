@@ -78,14 +78,46 @@ class ProductMedia extends Model
     /**
      * URL de lectura del original. El disco de medios es privado: se sirve a
      * través de Storage, nunca como archivo público del directorio `public`.
+     *
+     * Con un disco local privado la URL la sirve la propia aplicación. Con un
+     * bucket privado (S3), en cambio, `url()` devuelve una dirección que el
+     * navegador **no puede abrir** con un 403: hay que firmar una URL temporal.
+     * Se detecta por la configuración del disco en lugar de por su nombre, para
+     * que valga también con cualquier proveedor compatible.
      */
     public function url(): ?string
     {
         try {
-            return Storage::disk($this->disk)->url($this->path);
+            $disk = Storage::disk($this->disk);
+
+            if (self::isPrivateObjectStorage($this->disk)) {
+                return $disk->temporaryUrl($this->path, now()->addHour());
+            }
+
+            return $disk->url($this->path);
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    /**
+     * ¿El disco es un almacenamiento de objetos privado (S3 y compatibles)?
+     *
+     * Se mira el driver y la visibilidad declarados, no el nombre del disco: así
+     * funciona igual con `media-s3` que con un disco distinto o un proveedor
+     * compatible (R2, B2, MinIO).
+     */
+    public static function isPrivateObjectStorage(string $disk): bool
+    {
+        $config = config('filesystems.disks.'.$disk);
+
+        if (! is_array($config)) {
+            return false;
+        }
+
+        $isObjectStorage = in_array($config['driver'] ?? null, ['s3', 'gcs'], true);
+
+        return $isObjectStorage && ($config['visibility'] ?? null) !== 'public';
     }
 
     public function humanFileSize(): string

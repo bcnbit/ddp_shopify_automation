@@ -37,7 +37,7 @@ especial atención a lo que puede filtrar credenciales.
 ### Fuera del alcance (explícito)
 
 - **No se implanta observabilidad** (alertas, métricas, trazas). Sigue pendiente.
-- **No se migra a S3.** Los medios siguen en disco local, con la limitación declarada en §8.
+- **Sí se migra a S3** (implementado, §12). Pendiente sólo de las credenciales del bucket.
 - **No se monta CI/CD.** El despliegue es manual y documentado.
 - **No se cambia el flujo de publicación**: todo sigue terminando en `DRAFT`.
 - No se define política de copias de seguridad más allá de exigir que existan (§8).
@@ -84,7 +84,8 @@ proveedor.
 | `SESSION_SECURE_COOKIE` | `false` | **`true`** | La cookie de sesión no debe viajar por HTTP |
 | `DB_*` | root sin contraseña | Usuario dedicado con contraseña | Nunca `root` |
 | `QUEUE_CONNECTION` | `database` | `database` o `redis` | `database` es válido y ya está probado |
-| `PRODUCT_STUDIO_MEDIA_DRIVER` | `local` | `local` o `s3` | Ver §8 |
+| `PRODUCT_STUDIO_MEDIA_DISK` | `media` | `media-s3` | Originales en el bucket (§12) |
+| `LIVEWIRE_TEMPORARY_UPLOAD_DISK` | vacío | `s3` | **Clave para quitar el límite de subida** (§12) |
 | `MAIL_MAILER` | `log` | Un transporte real | Con `log` no sale ningún correo |
 | `PRODUCT_STUDIO_ADMIN_PASSWORD` | vacía (aleatoria) | **fijarla antes de cachear** | Sin ella, el admin inicial sale con una contraseña que se muestra una sola vez |
 
@@ -317,7 +318,7 @@ o el callback fallará al no encontrar el `state`. Con una sola instancia y
 
 | Riesgo | Impacto | Mitigación en esta fase |
 |---|---|---|
-| **Medios en disco local** | Las fotos se pierden si se reconstruye el servidor o se escala a varias instancias | Exigir disco persistente; S3 queda para una fase posterior (`media-s3` ya está configurado) |
+| **Medios en disco local** | Las fotos se pierden si se reconstruye el servidor o se escala a varias instancias | **Resuelto**: implementado el almacenamiento en S3 (§12). Falta poner las credenciales |
 | **Sin observabilidad** | Una cola detenida no avisa: las fichas se quedan «generando» | Comprobar `queue:monitor` a mano; el worker con reinicio automático reduce el riesgo |
 | **Sin copias de seguridad verificadas** | Pérdida de fichas y de originales | Exigir al proveedor copias de base de datos **y** de `storage/app/media` y `storage/app/media-derived` |
 | **Token OAuth caducado** | `SHOPIFY_OAUTH_EXPIRING=true` sin refresco rompe la conexión en 60 min | Mantenerlo en `false` (custom app); documentado en RFC-0009 §4.3 |
@@ -386,7 +387,128 @@ después.
 8. Cambiar una variable del `.env` y ejecutar `config:cache` tiene efecto; sin ese paso,
    no lo tiene (comportamiento esperado y documentado).
 
-## 12. Trabajo pendiente que esta RFC deja escrito
+## 12. Subida de imágenes: límites de PHP y almacenamiento en S3
+
+### 13.1 El síntoma y su causa
+
+Al subir una imagen en producción, el panel mostraba:
+
+```
+The mountedActions.0.data.upload.<uuid> failed to upload.
+```
+
+y después un error de validación. Ese texto sale de Livewire en una rama concreta: cuando el
+navegador **no recibe respuesta** del endpoint de subida. Es decir, la petición se corta antes de
+llegar a Laravel; no es un error de validación. Si el archivo incumpliera una regla, el mensaje
+nombraría la regla (`max`, `mimes`), no sería genérico.
+
+La causa son los límites de PHP del hosting (`upload_max_filesize`, `post_max_size`):
+cuando el cuerpo de la petición los supera, PHP lo descarta **antes** de que Laravel lo vea, así que
+no hay validación ni JSON y el navegador cae en esa rama.
+
+### 13.2 Fase 1: alinear los límites de Livewire con la aplicación
+
+Había un desajuste real: la aplicación aceptaba **20 MB** (`PRODUCT_STUDIO_MEDIA_MAX_KB=20480`)
+mientras Livewire aplicaba su valor por defecto de **12 MB** (`max:12288`). No existía
+`config/livewire.php`, así que la aplicación prometía en la interfaz un límite que la subida
+incumplía.
+
+Se publicó `config/livewire.php` con las claves necesarias (el resto las sigue aportando
+Livewire con `mergeConfigFrom()`, para que una clave nueva del paquete no quede anulada en
+silencio):
+
+- `rules` derivadas de `product-studio.media`, de modo que **hay una sola cifra** y no
+  pueden volver a divergir.
+- `max_upload_time` de 15 minutos: con subidas directas a S3, una ventana corta produce un 403
+  a mitad de subida que el navegador muestra igualmente como fallo genérico.
+- `cleanup` desactivado cuando el disco es externo: borrar en S3 desde el ciclo de una petición
+  añade latencia a cada carga del panel, y S3 tiene sus propias reglas de ciclo de vida.
+
+### 13.3 Fase 2: subida directa al bucket
+
+**Por qué S3 resuelve el problema:** Livewire elige entre dos caminos según el disco temporal
+(verificado en su código):
+
+| Disco temporal | Qué hace el navegador | Pasa por PHP |
+|---|---|---|
+| `local` | `POST` al servidor | **Sí** (sufre `post_max_size`) |
+| `s3` | `PUT` directo al bucket con URL firmada | **No** |
+
+Con el temporal en S3 el archivo **nunca toca el servidor**, así que los límites de PHP dejan de
+aplicar. El límite pasa a ser el del proveedor (5 GB por `PUT` en S3).
+
+**Hay que mover dos discos, y el segundo es el que importa:**
+
+```env
+PRODUCT_STUDIO_MEDIA_DISK=media-s3            # originales
+LIVEWIRE_TEMPORARY_UPLOAD_DISK=s3             # subida temporal <- el que quita el límite
+```
+
+Cambiar sólo el primero deja el archivo subiendo al servidor y el problema continúa igual.
+
+### 13.4 Cambios en el código
+
+Con el archivo en un bucket, **no existe como fichero en el servidor**. Esto rompía dos puntos:
+
+| Punto | Problema | Solución |
+|---|---|---|
+| `hash_file($file->getRealPath())` | `getRealPath()` devuelve una cadena que en S3 **no existe en disco**; `hash_file` falla y el hash salía como el de la cadena vacía | Se calcula sobre el contenido leído del flujo |
+| `getimagesize($file->getRealPath())` | Igual: devolvía `false` y las dimensiones quedaban vacías | Se vuelca a un fichero temporal propio del sistema y se mide ahí |
+| `ProductMedia::url()` | Con bucket privado, `url()` da **403** al abrirla | Se firma una URL temporal cuando el disco es de objetos y privado |
+
+**Un detalle que importa:** con S3 `getRealPath()` **sí devuelve una cadena** (del estilo
+`livewire-tmp/abc.jpg`), no `false`. Comprobar sólo `=== false` no basta: hay que
+comprobar que la ruta sea **legible**. Ese fue un fallo real que detectó la propia prueba mientras se
+escribía.
+
+La detección de bucket privado mira el **driver** y la **visibilidad** del disco, no su nombre, así
+que funciona igual con `media-s3`, con otro disco o con un proveedor compatible (R2, B2,
+MinIO).
+
+### 13.5 Lo ya subido no se rompe
+
+`product_media` guarda el **disco por fila**. Cambiar el disco por defecto a S3 sólo afecta a
+los archivos nuevos: las imágenes que ya estaban en local siguen leyéndose de donde están. No hace
+falta migrar los archivos existentes, y no se pierde ninguno.
+
+### 13.6 Puesta en marcha
+
+1. Instalado `league/flysystem-aws-s3-v3` (sin él los discos `s3` declarados en
+   `config/filesystems.php` eran configuración muerta).
+2. Crear el bucket y **dejarlo privado**.
+3. Rellenar en `.env`:
+
+```env
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=eu-west-1
+AWS_BUCKET=                # subidas temporales de Livewire
+AWS_BUCKET_MEDIA=          # originales (puede ser el mismo)
+
+PRODUCT_STUDIO_MEDIA_DISK=media-s3
+LIVEWIRE_TEMPORARY_UPLOAD_DISK=s3
+```
+
+4. `php artisan config:clear`.
+5. Antes de `config:cache`, recordar §4.6: con la caché activa `env()` no lee el
+   `.env`.
+
+**Para proveedores compatibles** (Cloudflare R2, Backblaze B2, MinIO) basta `AWS_ENDPOINT` y,
+si el proveedor lo requiere, `AWS_USE_PATH_STYLE_ENDPOINT=true`. `AWS_TEMPORARY_URL`
+existe sólo para un CDN delante del bucket.
+
+### 13.7 Comprobación
+
+Subir una imagen **grande** (más de 12 MB, que es donde antes fallaba) y comprobar que aparece en la
+ficha con su miniatura. Si la miniatura sale rota, la firma de URLs no está funcionando.
+
+Parte de esta comprobación está automatizada en `tests/Feature/Media/MediaObjectStorageTest.php`:
+nueve pruebas que simulan un archivo **sin ruta local** y verifican el hash, las dimensiones, los
+duplicados y la firma de la URL. El doble imita lo que hace Livewire con un archivo en S3
+(`getRealPath()` devuelve una ruta inexistente y el guardado va por flujo), no un disco local
+disfrazado.
+
+## 13. Trabajo pendiente que esta RFC deja escrito
 
 ### 12.0 Corregido durante la redacción de esta RFC
 
@@ -406,7 +528,8 @@ Ordenado por relación riesgo/esfuerzo. Nada de esto se implementa aquí:
    `APP_ENV`, `APP_DEBUG`, HTTPS, `.env` inaccesible, permisos sembrados y worker
    activo. Hoy es una lista manual; automatizarlo evita el fallo que más caro sale.
 2. **`DiagnosingHealth`** para que `/up` compruebe base de datos y cola de verdad.
-3. **Migración de medios a S3** (`media-s3` ya configurado).
+3. ~~**Migración de medios a S3**~~ — **hecho** (§12). Pendiente sólo de las credenciales del
+   bucket y de la comprobación con un archivo real grande.
 4. **Observabilidad y alertas** de RFC-0007.
 5. **Policy de retención de `sync_attempts`** y de logs.
 6. **CI** que ejecute `pint --test` y la suite antes de permitir el despliegue.

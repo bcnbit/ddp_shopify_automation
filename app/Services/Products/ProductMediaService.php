@@ -36,7 +36,11 @@ class ProductMediaService
     public function store(Product $product, UploadedFile $file, User $author): array
     {
         $disk = (string) config('media.disks.originals', 'media');
-        $sha256 = hash_file('sha256', $file->getRealPath());
+
+        // El hash y las dimensiones se calculan **sobre el flujo** del archivo, no
+        // sobre una ruta del disco local: con el almacenamiento temporal en S3 el
+        // archivo no existe como fichero en el servidor y `getRealPath()` fallaría.
+        $sha256 = hash('sha256', $this->contentsOf($file));
 
         $existing = $product->media()->where('sha256', $sha256)->first();
 
@@ -219,14 +223,46 @@ class ProductMediaService
     }
 
     /**
+     * Dimensiones reales de la imagen.
+     *
+     * `getimagesize()` necesita una ruta **local**. Con el almacenamiento temporal
+     * en S3 no la hay, así que se escribe el contenido en un fichero temporal del
+     * sistema y se mide ahí. Se hace en el momento de guardar, cuando el archivo ya
+     * está en memoria, y no en cada lectura.
+     *
      * @return array{0: int|null, 1: int|null}
      */
     private function dimensionsOf(UploadedFile $file): array
     {
+        $path = null;
+        $temporary = null;
+
         try {
-            $size = @getimagesize($file->getRealPath());
+            $path = $file->getRealPath();
+
+            // Con un bucket, `getRealPath()` **sí devuelve una cadena**, pero esa
+            // ruta no existe en el servidor: hay que comprobar que sea legible, no
+            // sólo que no sea `false`. Sin esta comprobación `getimagesize()`
+            // devolvía `false` en silencio y las dimensiones quedaban vacías.
+            if ($path === false || ! is_readable($path)) {
+                $temporary = tempnam(sys_get_temp_dir(), 'media-');
+
+                if ($temporary === false) {
+                    return [null, null];
+                }
+
+                file_put_contents($temporary, $this->contentsOf($file));
+                $path = $temporary;
+            }
+
+            $size = @getimagesize($path);
         } catch (\Throwable) {
             return [null, null];
+        } finally {
+            // El temporal se borra siempre, también si la medición falla.
+            if ($temporary !== null) {
+                @unlink($temporary);
+            }
         }
 
         if ($size === false) {
@@ -234,6 +270,46 @@ class ProductMediaService
         }
 
         return [(int) $size[0], (int) $size[1]];
+    }
+
+    /**
+     * Contenido binario del archivo subido, venga de donde venga.
+     *
+     * Se prefiere la ruta local cuando existe (es lo más barato en disco) y se cae
+     * al flujo cuando el archivo vive en un almacenamiento externo. Es la pieza que
+     * hace que el mismo código funcione con el temporal en local y en S3.
+     */
+    private function contentsOf(UploadedFile $file): string
+    {
+        $path = $file->getRealPath();
+
+        if ($path !== false && is_readable($path)) {
+            $contents = file_get_contents($path);
+
+            if ($contents !== false) {
+                return $contents;
+            }
+        }
+
+        $stream = $file->readStream();
+
+        if ($stream === false) {
+            throw new RuntimeException('No se ha podido leer la imagen subida.');
+        }
+
+        try {
+            $contents = stream_get_contents($stream);
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+
+        if ($contents === false || $contents === '') {
+            throw new RuntimeException('No se ha podido leer la imagen subida.');
+        }
+
+        return $contents;
     }
 
     public static function exists(ProductMedia $media): bool

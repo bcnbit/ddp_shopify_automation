@@ -95,11 +95,24 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            // **Privado a propósito**: son originales de producto y no deben ser
+            // accesibles sin firma. El panel los muestra con URLs temporales.
             'visibility' => 'private',
+            // Sólo para un CDN delante del bucket. Sin él, Laravel firma contra la
+            // URL de S3 directamente.
+            'temporary_url' => env('AWS_TEMPORARY_URL'),
             'throw' => false,
             'report' => false,
         ],
 
+        /*
+         * Disco de objetos de propósito general. Lo usa Livewire para las subidas
+         * temporales (`livewire-tmp`) cuando `LIVEWIRE_TEMPORARY_UPLOAD_DISK` apunta
+         * aquí: el navegador sube **directo al bucket** con una URL firmada y el
+         * archivo no pasa por PHP, así que los límites del hosting dejan de aplicar.
+         *
+         * Es privado: los temporales no deben ser legibles sin firma.
+         */
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -109,6 +122,8 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'visibility' => 'private',
+            'temporary_url' => env('AWS_TEMPORARY_URL'),
             'throw' => false,
             'report' => false,
         ],
