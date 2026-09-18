@@ -20,6 +20,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Administrador inicial
+    |--------------------------------------------------------------------------
+    |
+    | Valores que usa `AdminUserSeeder` para crear (o resetear) la cuenta del
+    | administrador técnico. Se leen con `config()` y **no** con `env()`:
+    |
+    | `env()` sólo funciona si el `.env` se ha cargado, y Laravel **no lo carga
+    | cuando la configuración está cacheada**. El seeder leía `env()` directamente
+    | y, en un despliegue con `config:cache` (lo que recomienda RFC-0010), recibía
+    | `null`: creía que no se le había dado contraseña y **no cambiaba nada en
+    | silencio**. Con `config()` el valor se resuelve al cachear y el fallo
+    | desaparece.
+    |
+    | `password` vacía significa «genera una aleatoria y muéstrala una vez por
+    | consola». Se exige un mínimo de 12 caracteres.
+    |
+    */
+
+    'admin' => [
+        'email' => env('PRODUCT_STUDIO_ADMIN_EMAIL', 'admin@diesdeplatja.test'),
+        'password' => env('PRODUCT_STUDIO_ADMIN_PASSWORD'),
+        'name' => env('PRODUCT_STUDIO_ADMIN_NAME', 'Administrador técnico'),
+        'min_password_length' => 12,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Opciones de variante
     |--------------------------------------------------------------------------
     |

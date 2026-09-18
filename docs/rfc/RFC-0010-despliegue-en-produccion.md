@@ -86,6 +86,7 @@ proveedor.
 | `QUEUE_CONNECTION` | `database` | `database` o `redis` | `database` es válido y ya está probado |
 | `PRODUCT_STUDIO_MEDIA_DRIVER` | `local` | `local` o `s3` | Ver §8 |
 | `MAIL_MAILER` | `log` | Un transporte real | Con `log` no sale ningún correo |
+| `PRODUCT_STUDIO_ADMIN_PASSWORD` | vacía (aleatoria) | **fijarla antes de cachear** | Sin ella, el admin inicial sale con una contraseña que se muestra una sola vez |
 
 ### 4.2 Por qué `APP_ENV=production` importa de verdad
 
@@ -121,6 +122,30 @@ plantilla, las líneas que no se usen se **borran**, no se dejan vacías.
 (comprobado). El `.env` de producción se crea en el servidor y se protege con permisos de
 archivo (`600`) y con el `DocumentRoot` en `public/`.
 
+### 4.6 `env()` fuera de `config/` y la caché de configuración
+
+**Regla:** `env()` sólo se usa dentro de los archivos de `config/`. Fuera de ahí se lee con
+`config()`.
+
+El motivo es concreto y se comprobó en este proyecto. Laravel **no carga el `.env` cuando la
+configuración está cacheada**: `LoadEnvironmentVariables` sale antes de leerlo. Medido en este
+repositorio:
+
+| | `env('APP_NAME')` |
+|---|---|
+| Sin `config:cache` | `'Shopify Product Studio'` |
+| **Con `config:cache`** | **`NULL`** |
+
+Esto convirtió en un fallo silencioso el `AdminUserSeeder`, que leía `env()` directamente: en un
+despliegue con `config:cache` —justo lo que recomienda el apartado 5.3— recibía `null`,
+interpretaba «no me han dado contraseña» y, como el administrador ya existía, terminaba **sin
+cambiar nada y sin avisar**. Quien lo ejecutaba se quedaba creyendo que su contraseña estaba
+puesta. Corregido: los valores viven en `product-studio.admin` y el seeder lee `config()`.
+
+**Consecuencia para el despliegue:** cualquier variable que sólo lea un seeder, un comando o un
+job con `env()` directo tiene este mismo problema. Al añadir código nuevo, la comprobación es
+`grep -rn "env(" app/ database/` y confirmar que cada uso está dentro de `config/`.
+
 ## 5. Procedimiento de despliegue
 
 Se ejecuta en este orden. Los pasos marcados **[verificar]** tienen comprobación asociada y no se
@@ -140,8 +165,35 @@ cp .env.example .env      # y editar: ver §4
 php artisan key:generate
 php artisan migrate --force
 php artisan db:seed --class=RoleAndPermissionSeeder --force
+php artisan db:seed --class=AdminUserSeeder --force   # ver 5.2.1
 php artisan studio:permissions
 ```
+
+#### 5.2.1 El administrador inicial y su contraseña
+
+`AdminUserSeeder` crea la cuenta con más privilegios. **No hay contraseña por defecto**: si
+`PRODUCT_STUDIO_ADMIN_PASSWORD` está vacía, genera una aleatoria de 20 caracteres y **la muestra
+una sola vez por consola**. Si no se copia en ese momento, sólo queda resetearla.
+
+Para fijar una contraseña conocida (mínimo 12 caracteres, configurable en
+`product-studio.admin.min_password_length`):
+
+```bash
+PRODUCT_STUDIO_ADMIN_PASSWORD='...' php artisan db:seed --class=AdminUserSeeder --force
+```
+
+Es idempotente: actualiza el mismo registro por email, no crea otro. **Este es el
+procedimiento de reseteo**, no hace falta tocar la base de datos.
+
+Dos comportamientos deliberados:
+
+- **Sin contraseña configurada y con un administrador ya existente, no se toca nada.** Generar
+  otra credencial dejaría fuera a quien ya entraba sin que nadie lo haya pedido.
+- **Una contraseña demasiado corta lanza un error** en lugar de aceptarse en silencio: es la
+  cuenta con más privilegios.
+
+Aplicar esta variable **antes** de `config:cache` (§5.3). Después no tiene efecto: con la caché
+activa, `env()` no lee el `.env` (§4.6).
 
 **`--no-dev`** deja fuera PHPUnit, Pint y Faker. No es sólo limpieza: son dependencias que no
 deben estar accesibles en producción.
@@ -328,11 +380,25 @@ después.
    permisos y acceso a productos.
 5. El worker procesa un trabajo de la cola `ai` de principio a fin: una ficha pasa de
    `generando` a `en revisión` sin intervención manual.
-6. Un reinicio del servidor **no** pierde trabajos en cola.
-7. Cambiar una variable del `.env` y ejecutar `config:cache` tiene efecto; sin ese paso,
+6. La contraseña del administrador técnico es la configurada, **con `config:cache` activo**:
+   se comprueba entrando al panel. Es el caso que antes fallaba en silencio (§4.6).
+7. Un reinicio del servidor **no** pierde trabajos en cola.
+8. Cambiar una variable del `.env` y ejecutar `config:cache` tiene efecto; sin ese paso,
    no lo tiene (comportamiento esperado y documentado).
 
 ## 12. Trabajo pendiente que esta RFC deja escrito
+
+### 12.0 Corregido durante la redacción de esta RFC
+
+El antipatrón de `env()` en `AdminUserSeeder` (§4.6). Estaba detectado pero sin arreglar; se
+corrigió al escribir esta RFC porque afectaba a la puesta en marcha:
+
+- `PRODUCT_STUDIO_ADMIN_EMAIL`, `PRODUCT_STUDIO_ADMIN_NAME` y `PRODUCT_STUDIO_ADMIN_PASSWORD`
+  pasan a `config/product-studio.php` (sección `admin`) y el seeder lee `config()`.
+- El seeder documenta por escrito por qué, para que nadie lo revierta a `env()` por costumbre.
+- `tests/Feature/Permissions/AdminUserSeederTest.php` cubre el caso, incluido el escenario de
+  configuración cacheada. Se verificó que **con el bug presente fallan 7 de sus 9 pruebas**;
+  sin él, pasan todas.
 
 Ordenado por relación riesgo/esfuerzo. Nada de esto se implementa aquí:
 
