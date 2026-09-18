@@ -122,7 +122,11 @@ return [
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_BUCKET'),
+            // Mismo fallback cruzado que `media-s3`, por el motivo contrario: si
+            // sólo se rellena `AWS_BUCKET_MEDIA`, este disco se quedaría sin bucket
+            // y **la firma de la subida fallaría**. Las dos variables son válidas
+            // por separado; cada disco prefiere la suya y acepta la otra.
+            'bucket' => env('AWS_BUCKET') ?: env('AWS_BUCKET_MEDIA'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),

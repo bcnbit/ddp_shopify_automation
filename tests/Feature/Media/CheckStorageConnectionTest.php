@@ -105,6 +105,52 @@ class CheckStorageConnectionTest extends TestCase
         );
     }
 
+    public function test_los_dos_discos_aceptan_cualquiera_de_las_dos_variables_de_bucket(): void
+    {
+        $config = file_get_contents(base_path('config/filesystems.php'));
+
+        // Bug real: el disco de originales prefería `AWS_BUCKET_MEDIA` y el temporal
+        // sólo miraba `AWS_BUCKET`. Rellenando una sola de las dos —que es lo que
+        // invita a hacer la plantilla—, uno de los dos se quedaba sin bucket y la
+        // firma de la subida fallaba con un error genérico.
+        $this->assertStringContainsString(
+            "env('AWS_BUCKET_MEDIA') ?: env('AWS_BUCKET')",
+            $config,
+            'Los originales deben aceptar AWS_BUCKET como respaldo.',
+        );
+
+        $this->assertStringContainsString(
+            "env('AWS_BUCKET') ?: env('AWS_BUCKET_MEDIA')",
+            $config,
+            'El temporal debe aceptar AWS_BUCKET_MEDIA como respaldo.',
+        );
+    }
+
+    public function test_avisa_cuando_el_disco_temporal_no_es_un_bucket(): void
+    {
+        // Es el escenario real del error de subida: los originales ya están en S3
+        // —por eso el comando dice «Bucket OK»— pero el disco que usa la **subida**
+        // sigue siendo local.
+        config()->set('filesystems.disks.originales-bucket', [
+            'driver' => 's3',
+            'key' => 'clave',
+            'secret' => 'secreto',
+            'region' => 'eu-west-1',
+            'bucket' => 'bucket',
+        ]);
+
+        config()->set('media.disks.originals', 'media');
+        config()->set('livewire.temporary_file_upload.disk', null);
+        config()->set('filesystems.default', 'local');
+
+        Storage::fake('media');
+
+        // El aviso se da al terminar: el bucket está bien, pero la subida no lo usa.
+        $this->artisan('storage:check', ['--disk' => 'media'])
+            ->expectsOutputToContain('Disco temporal')
+            ->assertExitCode(0);
+    }
+
     public function test_un_disco_inexistente_lo_dice(): void
     {
         $this->artisan('storage:check', ['--disk' => 'no-existe'])

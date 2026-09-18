@@ -120,15 +120,44 @@ class CheckStorageConnection extends Command
             return self::FAILURE;
         }
 
-        $this->newLine();
-        $this->info('  Bucket OK.');
-        $this->line('  Credenciales válidas, bucket accesible y permisos de lectura, escritura y borrado.');
+        // El disco temporal es el que usa la **subida**: sin comprobarlo, el comando
+        // podía decir «Bucket OK» y la subida fallar igualmente. Fue un fallo real de
+        // este comando: comprobaba los originales y sólo avisaba del temporal.
+        $temporaryIsS3 = $this->isS3Disk($temporaryDisk);
 
-        if ($temporaryDisk === $diskName || $temporaryDisk === 's3') {
-            $this->line('  La subida directa de Livewire ya está activa.');
+        if ($temporaryIsS3 && $temporaryDisk !== $diskName) {
+            $this->newLine();
+            $this->line('  Comprobación del disco temporal ('.$temporaryDisk.')');
+            $this->line('  -------------------------------------------------');
+
+            $temporaryResults = $this->probe($temporaryDisk);
+
+            foreach ($temporaryResults as $result) {
+                $this->line('  ['.($result['ok'] ? 'OK   ' : 'FALLO').'] '.$result['label'].': '.$result['detail']);
+
+                if (! $result['ok']) {
+                    $failed = true;
+                }
+            }
+        }
+
+        if ($failed) {
+            $this->newLine();
+            $this->error('  El almacenamiento no está listo: hay comprobaciones en rojo.');
+            $this->newLine();
+
+            return self::FAILURE;
+        }
+
+        $this->newLine();
+        $this->info('  Almacenamiento OK.');
+        $this->line('  Credenciales válidas y permisos de lectura, escritura, borrado y firma.');
+
+        if ($temporaryIsS3) {
+            $this->line('  La subida directa de Livewire está activa: el archivo va al bucket sin pasar por el servidor.');
         } else {
             $this->newLine();
-            $this->warn('  El disco temporal de Livewire NO es el bucket: '.$temporaryDisk);
+            $this->warn('  El disco temporal de Livewire NO es un bucket: '.$temporaryDisk);
             $this->line('  Las subidas siguen pasando por el servidor y sufren los límites de PHP.');
             $this->line('  Para subir directo al bucket: LIVEWIRE_TEMPORARY_UPLOAD_DISK=s3');
         }
@@ -136,6 +165,14 @@ class CheckStorageConnection extends Command
         $this->newLine();
 
         return self::SUCCESS;
+    }
+
+    /**
+     * ¿El disco existe y es de tipo S3?
+     */
+    private function isS3Disk(string $name): bool
+    {
+        return (string) (config('filesystems.disks.'.$name.'.driver') ?? '') === 's3';
     }
 
     /**
