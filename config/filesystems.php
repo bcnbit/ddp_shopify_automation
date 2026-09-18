@@ -91,7 +91,11 @@ return [
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),
-            'bucket' => env('AWS_BUCKET_MEDIA', env('AWS_BUCKET')),
+            // `env()` devuelve `null` si la variable **no existe**, pero devuelve la
+            // cadena vacía si existe y está vacía. Como la plantilla la deja vacía,
+            // hay que tratar ese caso explícitamente o el fallback no se aplicaría y
+            // el disco se quedaría sin bucket.
+            'bucket' => env('AWS_BUCKET_MEDIA') ?: env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
