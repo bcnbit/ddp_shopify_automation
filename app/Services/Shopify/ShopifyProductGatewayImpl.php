@@ -401,7 +401,7 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
     {
         $result = [];
 
-        foreach ($variants as $variant) {
+        foreach (array_values($variants) as $index => $variant) {
             $entry = [];
 
             $optionValues = $this->optionValues($variant);
@@ -430,9 +430,13 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
                 $entry['inventoryPolicy'] = (string) $variant['inventoryPolicy'];
             }
 
-            if (filled($variant['position'] ?? null)) {
-                $entry['position'] = (int) $variant['position'];
-            }
+            // Shopify numera las variantes desde 1 y exige que la posición esté
+            // dentro de 1..N («Variant position must be between 1 and the number
+            // of variants on the product»). En local la posición arranca en 0 y
+            // puede tener huecos al borrar una variante, así que se usa el orden
+            // del array —que ya llega ordenado por `position`— renumerando desde
+            // 1, en vez de reenviar el valor local tal cual.
+            $entry['position'] = $index + 1;
 
             $result[] = $entry;
         }

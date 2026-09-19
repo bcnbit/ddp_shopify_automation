@@ -11,10 +11,11 @@ donde ampliarla.
 - **Fecha:** 2026-09-19
 - **Acceso local:** http://ddpshopify.test/admin
 - **Acceso producción:** https://ddpshp.diesdeplatja.com/admin
-- **Suite:** `572 passed (1427 assertions)`
+- **Suite:** `574 passed (1430 assertions)`
 - **Rama:** `main`
-- **Último commit:** `c68a534 update`
-- **Árbol de trabajo:** 3 ficheros modificados sin commitear (el diagnóstico de CORS), ver §15
+- **Último commit:** `88c5ec0 update problemas conexión s3`
+- **Árbol de trabajo:** 2 ficheros modificados sin commitear (el arreglo de la posición de
+  variantes, ver §7.8). El diagnóstico de CORS de §15 **ya está commiteado** en `88c5ec0`.
 
 ---
 
@@ -407,6 +408,33 @@ escribía el archivo**. La ficha parecía completa en el panel, pero al enviarla
 | `array_unique` sobre arrays anidados | «Array to string conversion» |
 | Firma incompatible de `canViewForRecord` | El padre exige `Model`, no `Product` |
 | Vhost apuntando a la raíz del proyecto | Riesgo de exponer `.env` |
+| `Variant position must be between 1 and the number of variants on the product` | Se reenviaba la `position` local (0-based) tal cual. El gateway renumera desde 1 (ver §7.8) |
+
+### 7.8 `Variant position must be between 1 and the number of variants on the product`
+
+**Síntoma:** sincronizar una ficha cuyas variantes estuvieran fuera de `1..N` fallaba con ese
+mensaje. Afecta a **cualquier** ficha cuyas variantes se hayan creado por el gancho del modelo
+(la primera vale `0`), no sólo a las de varias variantes: con una sola variante la posición `0`
+también queda fuera de `1..1`. Las que se crean con `createSingleVariant()` se libraban por
+casualidad, porque ahí la posición se calcula aparte y la primera sale `1`.
+
+**Causa:** `product_variants.position` es **0-based** por decisión de `ProductVariant::booted()`
+(la primera variante vale `0`). El gateway reenviaba ese valor tal cual
+(`$entry['position'] = (int) $variant['position']`), pero Shopify numera **desde 1** y exige que
+la posición esté dentro de `1..N`. Un `0` queda fuera del rango por definición.
+
+**Solución:** el gateway deja de reenviar el valor local y **renumera desde 1** usando el orden
+del array, que ya llega ordenado por `position` (la relación `Product::variants()` lleva
+`orderBy('position')`). Esto cubre además el caso de **huecos**: al borrar una variante quedan
+posiciones salteadas (`0, 2, 3`) y sumar uno no bastaría.
+
+**Decisión de diseño:** la numeración local **no se toca**. Es la que usa el panel para ordenar,
+empieza en `0` a propósito, y cambiarla obligaría a migrar los datos existentes. La traducción
+0-based → 1-based es responsabilidad de la frontera con Shopify, igual que el `status: DRAFT`.
+
+**Pruebas de regresión** (`ShopifyGatewayTest`): `test_numera_las_variantes_desde_uno_para_shopify`
+y `test_renumera_las_posiciones_contiguas_aunque_haya_huecos`. Se verificó reintroduciendo el bug
+a mano: las dos fallan sin el arreglo, como exige §9.
 
 ---
 
@@ -473,8 +501,8 @@ php vendor\bin\pint
 
 ## 9. Pruebas
 
-- **Suite completa: `572 passed (1427 assertions)`** (al inicio del proyecto: 305 / 670).
-- `ShopifyGatewayTest` — **17 pruebas**: contrato del conector (HTTP falso).
+- **Suite completa: `574 passed (1430 assertions)`** (al inicio del proyecto: 305 / 670).
+- `ShopifyGatewayTest` — **19 pruebas**: contrato del conector (HTTP falso).
 - `ProductSyncServiceTest` — **23 pruebas**: orquestación (gateway falso).
 - `ShopifyCommandsTest` — **13 pruebas**: comandos de consola.
 - `pint --test`: pasa.
@@ -790,6 +818,7 @@ anularía el respaldo.
 | `tests/Feature/Media/CheckStorageConnectionTest.php` | 6 pruebas nuevas (14 en total) sobre CORS, ACL, redacción y limpieza |
 | `docs/rfc/RFC-0010-despliegue-en-produccion.md` | §13.8 nueva: CORS y ACL; §13.6 con el paso obligatorio |
 
-**Estado:** los tres ficheros están modificados y **sin commitear**. Suite: `572 passed`.
+**Estado:** los tres ficheros de esta sesión **ya están commiteados** en `88c5ec0 update
+problemas conexión s3`; la nota anterior («sin commitear») estaba desactualizada.
 
 

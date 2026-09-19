@@ -94,6 +94,64 @@ class ShopifyGatewayTest extends TestCase
         });
     }
 
+    /**
+     * Shopify numera las variantes desde 1 y rechaza cualquier posición fuera de
+     * `1..N` con «Variant position must be between 1 and the number of variants on
+     * the product». En local la posición arranca en 0, así que reenviarla tal cual
+     * hacía fallar toda sincronización con variantes.
+     */
+    public function test_numera_las_variantes_desde_uno_para_shopify(): void
+    {
+        $product = $this->syncableProduct();
+
+        // La ficha de prueba crea las variantes en 0 y 1: exactamente el caso que
+        // Shopify rechaza.
+        $this->assertSame([0, 1], $product->variants->pluck('position')->all());
+
+        $this->fakeShopify();
+
+        $this->gateway()->createOrUpdateDraft(ShopifyProductPayload::fromProduct($product));
+
+        Http::assertSent(function (Request $request): bool {
+            $variants = $this->graphQlVariables($request)['input']['variants'] ?? [];
+
+            $positions = array_map(
+                static fn (array $variant): int => (int) ($variant['position'] ?? 0),
+                $variants,
+            );
+
+            return $positions === [1, 2];
+        });
+    }
+
+    /**
+     * Una variante borrada deja huecos en la numeración local. Shopify exige que
+     * las posiciones sean contiguas dentro de `1..N`, así que no basta con sumar
+     * uno al valor local.
+     */
+    public function test_renumera_las_posiciones_contiguas_aunque_haya_huecos(): void
+    {
+        $product = $this->syncableProduct();
+
+        $product->variants()->where('sku', 'DDP-1001-ROJO-M')->update(['position' => 0]);
+        $product->variants()->where('sku', 'DDP-1001-ROJO-L')->update(['position' => 7]);
+
+        $this->fakeShopify();
+
+        $this->gateway()->createOrUpdateDraft(ShopifyProductPayload::fromProduct($product->refresh()));
+
+        Http::assertSent(function (Request $request): bool {
+            $variants = $this->graphQlVariables($request)['input']['variants'] ?? [];
+
+            $positions = array_map(
+                static fn (array $variant): int => (int) ($variant['position'] ?? 0),
+                $variants,
+            );
+
+            return $positions === [1, 2];
+        });
+    }
+
     public function test_escribe_el_metafield_privado_que_permite_reconocerlo(): void
     {
         $product = $this->syncableProduct();
