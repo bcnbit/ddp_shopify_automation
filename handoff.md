@@ -11,11 +11,11 @@ donde ampliarla.
 - **Fecha:** 2026-09-19
 - **Acceso local:** http://ddpshopify.test/admin
 - **Acceso producción:** https://ddpshp.diesdeplatja.com/admin
-- **Suite:** `581 passed (1447 assertions)`
+- **Suite:** `589 passed (1460 assertions)`
 - **Rama:** `main`
 - **Último commit:** `88c5ec0 update problemas conexión s3`
-- **Árbol de trabajo:** 2 ficheros modificados sin commitear (el arreglo de la posición de
-  variantes, ver §7.8). El diagnóstico de CORS de §15 **ya está commiteado** en `88c5ec0`.
+- **Árbol de trabajo:** limpio respecto a los commits anteriores; pendiente de commitear el
+  trabajo de §16 (stock inicial) y §17 (`File URL is invalid` + trazabilidad).
 
 ---
 
@@ -409,6 +409,7 @@ escribía el archivo**. La ficha parecía completa en el panel, pero al enviarla
 | Firma incompatible de `canViewForRecord` | El padre exige `Model`, no `Product` |
 | Vhost apuntando a la raíz del proyecto | Riesgo de exponer `.env` |
 | `Variant position must be between 1 and the number of variants on the product` | Se reenviaba la `position` local (0-based) tal cual. El gateway renumera desde 1 (ver §7.8) |
+| `File URL is invalid` | Se mandaba el GID del medio en `originalSource`, que Shopify valida como URL. Ahora va en `id` (ver §17) |
 
 ### 7.8 `Variant position must be between 1 and the number of variants on the product`
 
@@ -501,7 +502,7 @@ php vendor\bin\pint
 
 ## 9. Pruebas
 
-- **Suite completa: `581 passed (1447 assertions)`** (al inicio del proyecto: 305 / 670).
+- **Suite completa: `589 passed (1460 assertions)`** (al inicio del proyecto: 305 / 670).
 - `ShopifyGatewayTest` — **19 pruebas**: contrato del conector (HTTP falso).
 - `ProductSyncServiceTest` — **23 pruebas**: orquestación (gateway falso).
 - `ShopifyCommandsTest` — **13 pruebas**: comandos de consola.
@@ -585,10 +586,16 @@ Se consultó la documentación vigente antes de implementar. **No asumir de memo
      *todos* los medios en cada llamada, o Shopify borra los que falten.
 3. **`productCreate` solo crea la primera variante** — motivo adicional para `productSet`.
 4. **Medios en dos pasos:** `stagedUploadsCreate` → subir → `fileCreate` →
-   `productSet(files: [{originalSource: <gid>, alt: ...}])`.
+   `productSet(files: [{id: <gid>, alt: ...}])`.
    - El archivo debe subirse **el último** en el multipart: la firma solo es válida si el
      resto de campos la preceden.
    - `duplicateResolutionMode: APPEND_UUID` es necesario para que el ALT se aplique.
+   - **Corregido el 2026-09-19 (ver §17):** aquí ponía `originalSource: <gid>` y es un error.
+     `FileSetInput` tiene dos campos distintos: **`id`** es «el ID de un fichero que ya
+     existe» y **`originalSource`** es «la **URL** de origen» que Shopify debe descargar.
+     Como el fichero ya lo ha creado `fileCreate`, va en `id`. Mandar el GID en
+     `originalSource` hace que Shopify lo valide como URL y rechace **toda la operación**
+     con «File URL is invalid».
 5. **El filtrado de metafields por servidor solo es fiable si el metafield está declarado
    `adminFilterable`.** Si no, Shopify **ignora el filtro y devuelve productos
    cualesquiera** → una ficha podría sobrescribir el borrador de otra. Por eso el valor se
@@ -872,6 +879,94 @@ de stock por defecto.
 | `docs/rfc/RFC-0005…`, `docs/rfc/RFC-0008…` | La regla «no se inventa stock» se matiza con esta excepción acotada |
 
 **Pruebas:** se verificó reintroduciendo el bug a mano (quitar la asignación): **3 pruebas
-fallan** sin ella, como exige §9. Suite: `581 passed (1447 assertions)`.
+fallan** sin ella, como exige §9. Suite: `589 passed (1460 assertions)`.
+
+---
+
+## 17. Sesión 2026-09-19 (3): «File URL is invalid» y trazabilidad de la petición
+
+### El problema
+
+Sincronizar en **producción** una ficha con imágenes fallaba con **«File URL is invalid»**.
+El error no se reproducía en local porque el fallo está en la llamada a la API, no en el
+entorno. La persona que lo reportó sospechaba de una URL no expuesta a Internet; no era eso:
+el flujo de subida no necesita que la aplicación exponga nada, porque los bytes los sube el
+servidor a un *staged target* de Shopify.
+
+### La causa
+
+`ShopifyProductGatewayImpl::buildFiles()` construía la asociación del medio así:
+
+```php
+$entry = ['originalSource' => $file->gid];   // MAL
+```
+
+`FileSetInput` tiene dos campos **distintos y no intercambiables**:
+
+- **`id`** — «The ID of an existing file.»
+- **`originalSource`** — «The source **URL** of the file.»
+
+El fichero ya existía: lo había creado `fileCreate` en el paso anterior y teníamos su GID.
+Ponerlo en `originalSource` hacía que Shopify lo validara como URL y rechazara **la operación
+entera** —de ahí que fallara la ficha completa, no sólo la imagen—. Lo correcto es `id`.
+
+El paso de `fileCreate` sí usa `originalSource` bien, porque ahí el valor es la `resourceUrl`
+temporal, que sí es una URL. Eso despistó: la misma clave era correcta en un sitio y errónea
+en el otro.
+
+### El arreglo
+
+```php
+$entry = ['id' => $file->gid];
+```
+
+**Decisión:** la subida en dos pasos **no se toca**. Sigue siendo `stagedUploadsCreate` →
+subir bytes → `fileCreate` → asociar por `id`. Lo único que cambia es qué campo lleva el GID.
+
+### Trazabilidad: por qué costó tanto diagnosticarlo
+
+El error se veía, pero **no había forma de ver qué se había enviado**:
+
+- `sync_attempts.request_payload` **existía como columna y nunca se rellenaba**.
+  `recordRequest()` creaba la fila sin ella. `response_payload` sólo se guardaba al acertar.
+- El `Log::warning` de `handleFailure()` registraba `product_id`, `sync_attempt_id`,
+  `error_code` y `retryable`, pero **no el mensaje**.
+
+Es decir: ante un fallo, ni el panel ni el log decían qué valor concreto rechazó Shopify.
+Había que reproducirlo a ciegas contra la API de producción.
+
+Ahora:
+
+- `SyncAttempt::markRunning()` acepta la petición y la persiste (llega **ya redactada**).
+- `ProductSyncService::sync()` guarda `$payload->toArray()` antes de llamar a Shopify.
+- El `Log::warning` incluye el `message`, redactado con `SecretRedactor`.
+- El panel tiene una acción **«Ver petición»** en el historial de sincronización, que muestra
+  el payload exacto sin necesidad de entrar en la base de datos.
+- `SecretRedactor::OVERSIZED_KEYS` incluye `description_html`: el HTML compuesto viajaba
+  entero en la petición guardada y es voluminoso sin aportar al diagnóstico.
+
+### Ficheros
+
+| Fichero | Qué se hizo |
+|---|---|
+| `app/Services/Shopify/ShopifyProductGatewayImpl.php` | `buildFiles()`: el GID va en `id`, no en `originalSource` |
+| `app/Models/SyncAttempt.php` | `markRunning()` persiste la petición redactada |
+| `app/Services/Shopify/ProductSyncService.php` | Guarda la petición; añade el mensaje al log |
+| `app/Support/Security/SecretRedactor.php` | `description_html` como clave voluminosa |
+| `app/Filament/…/SyncAttemptsRelationManager.php` | Acción «Ver petición», autorizada por la Policy del producto |
+| `resources/views/filament/sync-attempt-request.blade.php` | Vista del payload |
+| `tests/Feature/Shopify/ShopifyGatewayTest.php` | Prueba del contrato `id` / `originalSource` |
+| `tests/Feature/Shopify/ProductSyncServiceTest.php` | 4 pruebas de trazabilidad |
+| `tests/Feature/Filament/SyncAttemptRequestModalTest.php` | 3 pruebas de la acción del panel |
+
+**Pruebas:** se verificó reintroduciendo los dos bugs a mano (el `originalSource` y quitar el
+guardado de la petición): **1 y 2 pruebas fallan** respectivamente sin sus arreglos, como
+exige §9. Suite: `589 passed (1460 assertions)`.
+
+### Pendiente de confirmar
+
+El arreglo está probado contra un doble de HTTP, no contra la API real: **falta un envío real
+en producción** con una ficha con imágenes. Si volviera a fallar, ahora el panel dirá
+exactamente qué se envió.
 
 

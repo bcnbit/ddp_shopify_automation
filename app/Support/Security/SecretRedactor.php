@@ -52,6 +52,11 @@ final class SecretRedactor
         'images_base64',
         'b64_json',
         'html_description',
+        // La descripción que viaja a Shopify se llama `description_html` (el
+        // orden de las palabras se invierte al construir la carga útil). Sin
+        // esta entrada, la petición guardada en `sync_attempts` arrastraba el
+        // HTML compuesto entero, que puede ser largo y no aporta al diagnóstico.
+        'description_html',
         'raw_response',
         'prompt_text',
         'full_prompt',

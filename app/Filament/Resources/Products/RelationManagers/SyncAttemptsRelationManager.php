@@ -76,6 +76,25 @@ class SyncAttemptsRelationManager extends RelationManager
                     ->placeholder('Sistema'),
             ])
             ->recordActions([
+                // Cuando algo falla, lo primero que se pregunta es «¿qué se envió?».
+                // Antes había que mirar la base de datos; ahora la petición exacta
+                // que recibió Shopify se puede abrir desde aquí.
+                Action::make('inspectRequest')
+                    ->label('Ver petición')
+                    ->icon('heroicon-o-document-magnifying-glass')
+                    ->color('gray')
+                    ->modalHeading(fn (SyncAttempt $record): string => 'Petición enviada a Shopify'
+                        .($record->support_reference !== null ? " ({$record->support_reference})" : ''))
+                    ->modalDescription('Es exactamente lo que se envió. Los secretos y el HTML largo van enmascarados.')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Cerrar')
+                    ->visible(fn (SyncAttempt $record): bool => auth()->user()?->can('view', $record->product) === true
+                        && $record->request_payload !== null)
+                    ->modalContent(fn (SyncAttempt $record) => view(
+                        'filament.sync-attempt-request',
+                        ['payload' => $record->request_payload ?? []],
+                    )),
+
                 Action::make('retry')
                     ->label('Reintentar')
                     ->icon('heroicon-o-arrow-path')

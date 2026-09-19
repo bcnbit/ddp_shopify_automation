@@ -152,6 +152,40 @@ class ShopifyGatewayTest extends TestCase
         });
     }
 
+    /**
+     * El fichero ya existe —lo ha creado `fileCreate` y tenemos su GID—, así que
+     * va en `id`. `originalSource` es «la URL de origen» y Shopify la valida como
+     * tal: mandar ahí un GID hacía fallar toda la operación con «File URL is
+     * invalid», y con ella el envío completo de la ficha.
+     */
+    public function test_asocia_los_medios_por_id_y_no_por_url_de_origen(): void
+    {
+        $product = $this->syncableProduct();
+        $this->materializeMedia($product);
+
+        $this->fakeShopify([
+            'FileCreate' => $this->fileCreateResponse('gid://shopify/MediaImage/777'),
+        ]);
+
+        $this->gateway()->createOrUpdateDraft(ShopifyProductPayload::fromProduct($product));
+
+        Http::assertSent(function (Request $request): bool {
+            if (! str_contains($request->body(), 'productSet')) {
+                return false;
+            }
+
+            $files = $this->graphQlVariables($request)['input']['files'] ?? [];
+
+            if ($files === []) {
+                return false;
+            }
+
+            // El GID va en `id`, y `originalSource` no se envía.
+            return ($files[0]['id'] ?? null) === 'gid://shopify/MediaImage/777'
+                && ! array_key_exists('originalSource', $files[0]);
+        });
+    }
+
     public function test_escribe_el_metafield_privado_que_permite_reconocerlo(): void
     {
         $product = $this->syncableProduct();

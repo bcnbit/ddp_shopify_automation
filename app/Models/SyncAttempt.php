@@ -71,10 +71,26 @@ class SyncAttempt extends Model
         return $this->belongsTo(User::class, 'attempted_by');
     }
 
-    public function markRunning(): void
+    /**
+     * Marca el intento como en curso y guarda la petición saneada.
+     *
+     * La petición se persiste aquí, y no sólo la respuesta, porque cuando algo
+     * falla es justo lo que hace falta para diagnosticar: sin ella, un error
+     * como «File URL is invalid» decía qué se rechazó pero no **qué se envió**,
+     * y había que reproducirlo a ciegas. Llega ya redactada por quien la
+     * construye (ver `ProductSyncService`).
+     *
+     * @param  array<string, mixed>  $request
+     */
+    public function markRunning(array $request = []): void
     {
         $this->status = SyncStatus::Running;
         $this->started_at = now();
+
+        if ($request !== []) {
+            $this->request_payload = $request;
+        }
+
         $this->save();
     }
 

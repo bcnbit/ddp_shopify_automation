@@ -15,6 +15,8 @@ use App\Models\Product;
 use App\Models\SyncAttempt;
 use App\Services\Shopify\ProductSyncService;
 use App\Support\Products\IdempotencyKey;
+use App\Support\Security\SecretRedactor;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\Support\BuildsSyncableProducts;
@@ -399,6 +401,91 @@ class ProductSyncServiceTest extends TestCase
 
         $this->assertNotNull($log);
         $this->assertSame($attempt->refresh()->support_reference, $log->properties['support_reference']);
+    }
+
+    // ------------------------------------------------------------ trazabilidad
+
+    /**
+     * Cuando algo falla, el intento debe conservar **qué se envió**.
+     *
+     * Sin esto, un error como «File URL is invalid» decía qué se rechazó pero no
+     * qué se mandó, y había que reproducirlo a ciegas contra producción.
+     */
+    public function test_guarda_la_peticion_redactada_aunque_falle(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->syncableProduct([], $operadora);
+
+        $this->gateway->alwaysFailWith = ShopifyRequestFailed::permanent('File URL is invalid', 'user_error');
+
+        $attempt = $this->service()->request($product, $operadora);
+        $this->service()->sync($product->getKey());
+
+        $saved = $attempt->refresh()->request_payload;
+
+        $this->assertIsArray($saved);
+        $this->assertSame($product->internal_reference, $saved['product_studio_id']);
+        $this->assertSame('DRAFT', $saved['status']);
+
+        // Lo que interesa del fallo: la petición concreta que Shopify rechazó.
+        $this->assertSame('DDP-1001-ROJO-M', $saved['variants'][0]['sku']);
+    }
+
+    public function test_la_peticion_guardada_no_arrastra_el_html_de_la_descripcion(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->syncableProduct([], $operadora);
+
+        $this->gateway->alwaysFailWith = ShopifyRequestFailed::permanent('Fallo', 'test_error');
+
+        $attempt = $this->service()->request($product, $operadora);
+        $this->service()->sync($product->getKey());
+
+        // Se enmascara: es voluminoso y no aporta al diagnóstico.
+        $this->assertStringContainsString(
+            SecretRedactor::MASK,
+            (string) $attempt->refresh()->request_payload['description_html'],
+        );
+    }
+
+    public function test_el_motivo_del_fallo_queda_en_el_log(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->syncableProduct([], $operadora);
+
+        Log::spy();
+
+        $this->gateway->alwaysFailWith = ShopifyRequestFailed::permanent('File URL is invalid', 'user_error');
+
+        $this->service()->request($product, $operadora);
+        $this->service()->sync($product->getKey());
+
+        // `sync_attempts` es lo que se ve en el panel; para diagnosticar desde el
+        // servidor hace falta el mensaje real, no sólo el código de error.
+        Log::shouldHaveReceived('warning')
+            ->withArgs(function (string $message, array $context): bool {
+                return $message === 'Fallo al sincronizar con Shopify.'
+                    && ($context['message'] ?? null) === 'File URL is invalid'
+                    && ($context['error_code'] ?? null) === 'user_error';
+            })
+            ->once();
+    }
+
+    public function test_la_peticion_no_se_pisa_en_un_reintento_que_no_llega_a_enviar(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->syncableProduct([], $operadora);
+
+        $this->gateway->alwaysFailWith = ShopifyRequestFailed::permanent('Fallo', 'test_error');
+
+        $attempt = $this->service()->request($product, $operadora);
+        $this->service()->sync($product->getKey());
+
+        $primera = $attempt->refresh()->request_payload;
+
+        // El intento no se ha vuelto a ejecutar: lo guardado sigue siendo la
+        // petición de ese envío, no un valor vacío que borre la evidencia.
+        $this->assertSame($primera, $attempt->refresh()->request_payload);
     }
 
     public function test_el_reintento_continua_desde_el_gid_ya_guardado(): void

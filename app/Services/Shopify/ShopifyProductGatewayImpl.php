@@ -484,7 +484,14 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
                 continue;
             }
 
-            $entry = ['originalSource' => $file->gid];
+            // `FileSetInput` tiene dos campos distintos y no intercambiables:
+            // `id` es «el ID de un fichero que ya existe» y `originalSource` es
+            // «la URL de origen» que Shopify debe descargar. Aquí el fichero ya
+            // existe —lo ha creado `fileCreate` en el paso anterior y tenemos su
+            // GID—, así que va en `id`. Mandar el GID en `originalSource` hacía
+            // que Shopify lo validara como URL y rechazara la operación entera
+            // con «File URL is invalid».
+            $entry = ['id' => $file->gid];
 
             if (filled($item['altText'] ?? null)) {
                 $entry['alt'] = (string) $item['altText'];

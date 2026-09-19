@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Support\Audit\ActivityRecorder;
 use App\Support\Products\IdempotencyKey;
 use App\Support\Products\ProductReadiness;
+use App\Support\Security\SecretRedactor;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -45,6 +46,7 @@ class ProductSyncService
     public function __construct(
         private readonly ShopifyProductGateway $gateway,
         private readonly ActivityRecorder $recorder,
+        private readonly SecretRedactor $redactor,
     ) {}
 
     /**
@@ -129,9 +131,13 @@ class ProductSyncService
 
         $attempt = $this->currentAttempt($product);
 
-        $attempt?->markRunning();
-
         $payload = ShopifyProductPayload::fromProduct($product);
+
+        // La petición se guarda antes de llamar a Shopify y ya redactada: si la
+        // llamada falla, el intento conserva qué se envió. Sin esto, el error
+        // decía qué se rechazó pero no qué se mandó, y había que reproducirlo a
+        // ciegas contra la API de producción.
+        $attempt?->markRunning($this->redactor->redact($payload->toArray()));
 
         try {
             $result = $this->gateway->createOrUpdateDraft($payload, $product->shopify_product_gid);
@@ -272,11 +278,16 @@ class ProductSyncService
     {
         $this->fail($product, $attempt, $failure->getMessage(), $failure->errorCode, $failure->isRetryable);
 
+        // El motivo viaja al log además de a la ficha: `sync_attempts` es lo que
+        // se ve en el panel, pero para diagnosticar desde el servidor hace falta
+        // el mensaje real, no sólo el código. Se redacta aquí porque este log no
+        // pasa por el procesador de `activity_log`.
         Log::warning('Fallo al sincronizar con Shopify.', [
             'product_id' => $product->getKey(),
             'sync_attempt_id' => $attempt?->getKey(),
             'error_code' => $failure->errorCode,
             'retryable' => $failure->isRetryable,
+            'message' => $this->redactor->redactString($failure->getMessage()),
         ]);
     }
 
