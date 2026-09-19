@@ -119,6 +119,10 @@ class ProductVariantService
      * - **Es idempotente**: si una talla ya existe para esta ficha, no se toca. Así
      *   pulsar el botón dos veces no falla por SKU duplicado, y se puede completar
      *   una ficha que sólo tenía algunas tallas.
+     * - **Stock inicial de arranque**: cada talla nueva nace con la cantidad de
+     *   `product-studio.variants.initial_inventory_quantity` (5 por defecto), para
+     *   que la ficha se pueda vender desde el primer día. No es una confirmación
+     *   de inventario real y por eso nunca se aplica a las tallas que ya existían.
      *
      * No toca las imágenes: la foto destacada pertenece a la ficha y las variantes
      * no tienen imagen propia en el modelo actual.
@@ -169,6 +173,7 @@ class ProductVariantService
                     'option2_name' => 'Talla',
                     'option2_value' => $size,
                     'price' => $price,
+                    'inventory_quantity' => self::initialInventoryQuantity(),
                     'inventory_policy' => (string) config(
                         'product-studio.variants.default_inventory_policy',
                         InventoryPolicy::Deny->value,
@@ -195,6 +200,24 @@ class ProductVariantService
 
             return $created;
         });
+    }
+
+    /**
+     * Cantidad con la que nacen las tallas del botón «Añadir Variante Tallas».
+     *
+     * Un `null` en la configuración deja la variante sin cantidad (como antes de
+     * existir esta opción). El valor se normaliza a entero porque en un `.env`
+     * llega siempre como cadena.
+     *
+     * Es `public static` para que el panel pueda anunciar la misma cifra que se
+     * va a guardar —igual que `combinationKey()`—: si el aviso y el dato se
+     * calcularan por separado, el mensaje podría decir 5 y guardarse otra cosa.
+     */
+    public static function initialInventoryQuantity(): ?int
+    {
+        $quantity = config('product-studio.variants.initial_inventory_quantity');
+
+        return $quantity === null || $quantity === '' ? null : (int) $quantity;
     }
 
     /**

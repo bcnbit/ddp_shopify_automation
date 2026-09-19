@@ -116,6 +116,95 @@ class AddSizeVariantsTest extends TestCase
         $this->assertSame([0, 1, 2, 3, 4], array_map('intval', $positions));
     }
 
+    // -------------------------------------------------------- stock inicial
+
+    public function test_las_tallas_nuevas_nacen_con_cinco_unidades(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->product();
+
+        app(ProductVariantService::class)->generateSizes($product, $operadora);
+
+        // El stock de arranque es lo que permite vender la ficha desde el primer
+        // día sin teclear cinco cantidades a mano.
+        foreach ($product->variants()->get() as $variant) {
+            $this->assertSame(5, $variant->inventory_quantity);
+        }
+    }
+
+    public function test_la_cantidad_inicial_viene_de_la_configuracion(): void
+    {
+        config()->set('product-studio.variants.initial_inventory_quantity', 12);
+
+        $operadora = $this->operadora();
+        $product = $this->product();
+
+        app(ProductVariantService::class)->generateSizes($product, $operadora);
+
+        // La cifra no está incrustada en el código.
+        $this->assertSame(12, $product->variants()->first()->inventory_quantity);
+    }
+
+    public function test_sin_cantidad_configurada_las_tallas_quedan_sin_stock(): void
+    {
+        config()->set('product-studio.variants.initial_inventory_quantity', null);
+
+        $operadora = $this->operadora();
+        $product = $this->product();
+
+        app(ProductVariantService::class)->generateSizes($product, $operadora);
+
+        // `null` desactiva la función: es el comportamiento anterior.
+        $this->assertNull($product->variants()->first()->inventory_quantity);
+    }
+
+    public function test_una_cantidad_vacia_en_el_entorno_no_rompe_el_stock(): void
+    {
+        // Un `.env` con la clave definida pero vacía llega como cadena vacía y
+        // anularía el valor por defecto (handoff.md §2): debe tratarse como «sin
+        // cantidad», no como 0.
+        config()->set('product-studio.variants.initial_inventory_quantity', '');
+
+        $operadora = $this->operadora();
+        $product = $this->product();
+
+        app(ProductVariantService::class)->generateSizes($product, $operadora);
+
+        $this->assertNull($product->variants()->first()->inventory_quantity);
+    }
+
+    public function test_no_pisa_el_stock_de_las_tallas_que_ya_existian(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->product();
+
+        // Una talla ya creada, con una cantidad decidida por una persona.
+        ProductVariant::factory()->forProduct($product)->create([
+            'sku' => 'DDP-SS-VOICE-S',
+            'option1_name' => 'Color', 'option1_value' => '',
+            'option2_name' => 'Talla', 'option2_value' => 'S',
+            'inventory_quantity' => 40,
+        ]);
+
+        app(ProductVariantService::class)->generateSizes($product, $operadora);
+
+        // El botón sólo rellena lo que crea: la cifra confirmada no se toca.
+        $this->assertSame(40, $product->variants()->where('sku', 'DDP-SS-VOICE-S')->first()->inventory_quantity);
+        $this->assertSame(5, $product->variants()->where('sku', 'DDP-SS-VOICE-M')->first()->inventory_quantity);
+    }
+
+    public function test_la_matriz_de_color_no_recibe_stock_inicial(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->product();
+
+        app(ProductVariantService::class)->generateMatrix($product, ['Blanco'], ['M'], $operadora);
+
+        // La cantidad de arranque es una decisión del botón de tallas; la matriz
+        // color × talla sigue sin inventar stock.
+        $this->assertNull($product->variants()->first()->inventory_quantity);
+    }
+
     // ---------------------------------------------------------- idempotencia
 
     public function test_solo_crea_las_tallas_que_faltan(): void

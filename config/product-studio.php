@@ -69,7 +69,22 @@ return [
         | `2XL` y no `XXL`: es la etiqueta que usa la tienda.
         */
         'standard_sizes' => ['S', 'M', 'L', 'XL', '2XL'],
-        'initial_inventory_quantity' => null,
+
+        /*
+        | Stock inicial del botón «Añadir Variante Tallas».
+        |
+        | Es un valor de arranque para que la ficha se pueda vender desde el
+        | primer día, **no** una confirmación de inventario real: quien lo
+        | necesite lo ajusta después en cada variante. Por eso sólo se aplica a
+        | las variantes que crea ese botón y nunca se pisa una cantidad ya
+        | existente.
+        |
+        | `null` deja las variantes sin cantidad, como antes de existir esta
+        | clave. Cuidado con el `.env`: una variable definida pero **vacía**
+        | anula el valor por defecto (ver `handoff.md` §2), así que la plantilla
+        | la trae con un número y no en blanco.
+        */
+        'initial_inventory_quantity' => env('PRODUCT_STUDIO_INITIAL_INVENTORY_QUANTITY', 5),
     ],
 
     /*

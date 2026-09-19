@@ -20,7 +20,12 @@ Evitar los dos errores más caros del alta: imágenes deficientes y variantes in
 - La fuente de verdad es la tabla local de variantes, no el texto de descripción.
 - Combinaciones por Color y Talla; precio general heredado salvo excepción explícita.
 - SKU obligatorio y único dentro del catálogo que gestione la aplicación.
-- El MVP crea inventario sin cantidad inicial o con la política definida en configuración; no inventa stock.
+- El MVP crea inventario con la política definida en configuración; no inventa stock.
+- **Excepción acotada (2026-09-19):** el botón «Añadir Variante Tallas» da de alta cada talla con un
+  **stock inicial de arranque** (`product-studio.variants.initial_inventory_quantity`, 5 por defecto)
+  para que la ficha se pueda vender desde el primer día. No es una confirmación de inventario real:
+  sólo se aplica a las variantes que ese botón crea, nunca pisa una cantidad ya existente, y se
+  desactiva poniendo la clave a `null`. La matriz color × talla sigue sin cantidad inicial.
 - Validar que opciones, valores y variantes no queden desalineados.
 
 ## Validaciones SEO y comerciales

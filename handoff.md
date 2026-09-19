@@ -11,7 +11,7 @@ donde ampliarla.
 - **Fecha:** 2026-09-19
 - **Acceso local:** http://ddpshopify.test/admin
 - **Acceso producción:** https://ddpshp.diesdeplatja.com/admin
-- **Suite:** `574 passed (1430 assertions)`
+- **Suite:** `581 passed (1447 assertions)`
 - **Rama:** `main`
 - **Último commit:** `88c5ec0 update problemas conexión s3`
 - **Árbol de trabajo:** 2 ficheros modificados sin commitear (el arreglo de la posición de
@@ -501,7 +501,7 @@ php vendor\bin\pint
 
 ## 9. Pruebas
 
-- **Suite completa: `574 passed (1430 assertions)`** (al inicio del proyecto: 305 / 670).
+- **Suite completa: `581 passed (1447 assertions)`** (al inicio del proyecto: 305 / 670).
 - `ShopifyGatewayTest` — **19 pruebas**: contrato del conector (HTTP falso).
 - `ProductSyncServiceTest` — **23 pruebas**: orquestación (gateway falso).
 - `ShopifyCommandsTest` — **13 pruebas**: comandos de consola.
@@ -648,8 +648,12 @@ Encaja en RFC-0005.
 
 ### 12.3 Funcionalidad nueva que no está en ningún RFC
 
-- **Inventario:** el MVP no envía cantidades (`initial_inventory_quantity` es `null`). Si se
-  quiere stock real, hay que decidir política y añadir la llamada.
+- **Inventario:** el botón «Añadir Variante Tallas» ya da de alta cada talla con un **stock de
+  arranque** de 5 unidades (`PRODUCT_STUDIO_INITIAL_INVENTORY_QUANTITY`, ver §16). Pero ojo:
+  **esa cantidad se guarda sólo en local y NO viaja a Shopify** — `ShopifyProductPayload` envía
+  `inventoryPolicy` y no `inventoryQuantity`, y no hay `locationId` ni `inventorySetQuantities`
+  en el conector. Enviar stock real exige decidir la política y añadir esa llamada (más el
+  *location* de la tienda).
 - **Traducciones:** `product_content` ya tiene `locale` (es/ca/en/fr) y `Product` tiene
   `audience`, pero **solo se genera en español**.
 - **Edición masiva:** excluida del MVP explícitamente.
@@ -820,5 +824,54 @@ anularía el respaldo.
 
 **Estado:** los tres ficheros de esta sesión **ya están commiteados** en `88c5ec0 update
 problemas conexión s3`; la nota anterior («sin commitear») estaba desactualizada.
+
+---
+
+## 16. Sesión 2026-09-19 (2): stock inicial en «Añadir Variante Tallas»
+
+### Qué se pidió
+
+Que las variantes creadas por el botón **«Añadir Variante Tallas»** nacieran con **5 unidades**
+de stock por defecto.
+
+### Qué se hizo
+
+- `generateSizes()` (`ProductVariantService`) asigna `inventory_quantity` a cada talla nueva,
+  leyendo `product-studio.variants.initial_inventory_quantity` (**5** por defecto).
+- La clave ya existía en `config/product-studio.php` **sin uso** (`null`); ahora es la fuente
+  única de la cifra y `null` sigue significando «sin cantidad», que es el comportamiento anterior.
+- `ProductVariantService::initialInventoryQuantity()` es `public static` para que el panel
+  anuncie **la misma cifra** que se va a guardar, igual que ya se hace con `combinationKey()`.
+- El panel avisa de la cifra en el modal de confirmación y en el *helper* del campo
+  «Cantidad inicial», en lugar de dejar creer que hay que teclearla.
+- `PRODUCT_STUDIO_INITIAL_INVENTORY_QUANTITY=5` en `.env.example`, **con valor** y no vacío:
+  una variable definida pero vacía anularía el valor por defecto (ver §2).
+
+### Límites, a propósito
+
+- **No se pisa** una cantidad ya existente: el botón sólo rellena lo que crea, así que una talla
+  con stock confirmado a mano se queda como estaba. Es lo que exige RFC-0000 (lo confirmado
+  prevalece).
+- **La matriz color × talla (`generateMatrix`) no cambia**: sigue sin cantidad inicial. El stock
+  de arranque es una decisión del botón de tallas, no una regla general.
+- **La cantidad NO viaja a Shopify.** `ShopifyProductPayload` envía `inventoryPolicy` y no
+  `inventoryQuantity`, y el conector no tiene `locationId` ni `inventorySetQuantities`. Es decir:
+  el número se ve y se edita en el panel, pero el borrador de Shopify **no recibe stock**. Hacerlo
+  exige decidir la política de inventario y añadir esa llamada; queda como ampliación (§12.3).
+
+### Ficheros
+
+| Fichero | Qué se hizo |
+|---|---|
+| `config/product-studio.php` | La clave `initial_inventory_quantity` pasa de `null` a `env(..., 5)`, documentada |
+| `app/Services/Products/ProductVariantService.php` | `generateSizes()` asigna la cantidad; nuevo `initialInventoryQuantity()` |
+| `app/Filament/…/VariantsRelationManager.php` | Aviso con la cifra en el modal y en el *helper* del campo |
+| `.env.example` | `PRODUCT_STUDIO_INITIAL_INVENTORY_QUANTITY=5` |
+| `tests/Feature/Products/AddSizeVariantsTest.php` | 6 pruebas nuevas sobre el stock inicial |
+| `tests/Feature/Filament/AddSizeVariantsButtonTest.php` | 1 prueba del flujo completo por el botón |
+| `docs/rfc/RFC-0005…`, `docs/rfc/RFC-0008…` | La regla «no se inventa stock» se matiza con esta excepción acotada |
+
+**Pruebas:** se verificó reintroduciendo el bug a mano (quitar la asignación): **3 pruebas
+fallan** sin ella, como exige §9. Suite: `581 passed (1447 assertions)`.
 
 

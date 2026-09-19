@@ -41,7 +41,9 @@ nunca altere una ficha ya creada, aprobada o sincronizada.
 
 - **No se reescriben productos que ya existen en Shopify.** Esta ampliación se aplica a fichas
   nuevas o a una sincronización explícita posterior. No hay *backfill* ni reenvío automático.
-- **No se inventa stock ni traducciones** (siguen fuera del MVP, ver `handoff.md` §12.3).
+- **No se inventa stock ni traducciones** (siguen fuera del MVP, ver `handoff.md` §12.3). La única
+  excepción es el stock de arranque del botón «Añadir Variante Tallas» (RFC-0005), que es una cifra
+  de configuración, no un inventario confirmado.
 - **No se retiran todavía las columnas libres** `composition`, `fit` y `care_instructions`
   (ver 5.4).
 - No hay aviso automático de «existe una versión más nueva del mantenimiento».

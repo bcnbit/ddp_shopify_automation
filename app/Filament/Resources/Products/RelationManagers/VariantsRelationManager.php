@@ -92,7 +92,15 @@ class VariantsRelationManager extends RelationManager
                 TextInput::make('inventory_quantity')
                     ->label('Cantidad inicial')
                     ->numeric()
-                    ->helperText('Dejar vacío salvo que una persona confirme el stock.'),
+                    ->helperText(function (): string {
+                        $inicial = ProductVariantService::initialInventoryQuantity();
+
+                        // El botón «Añadir Variante Tallas» ya propone esta cifra;
+                        // decirlo aquí evita que parezca que hay que teclearla.
+                        return $inicial === null
+                            ? 'Dejar vacío salvo que una persona confirme el stock.'
+                            : "Dejar vacío salvo que una persona confirme el stock. Las tallas nuevas nacen con {$inicial}.";
+                    }),
             ]);
     }
 
@@ -191,7 +199,7 @@ class VariantsRelationManager extends RelationManager
 
                         Notification::make()
                             ->title($created === 1 ? 'Talla añadida' : $created.' tallas añadidas')
-                            ->body('Se han creado con el precio de la ficha. Las imágenes no se han tocado.')
+                            ->body($this->createdSizesMessage())
                             ->success()
                             ->send();
                     }),
@@ -214,6 +222,23 @@ class VariantsRelationManager extends RelationManager
                         ->visible(fn (): bool => $this->canEditOwner()),
                 ]),
             ]);
+    }
+
+    /**
+     * Texto del aviso tras crear tallas, con la misma cifra que se ha guardado.
+     *
+     * Se lee de la configuración en lugar de escribirla a mano: si alguien cambia
+     * el stock inicial, el aviso sigue diciendo la verdad.
+     */
+    private function createdSizesMessage(): string
+    {
+        $inicial = ProductVariantService::initialInventoryQuantity();
+
+        $base = 'Se han creado con el precio de la ficha. Las imágenes no se han tocado.';
+
+        return $inicial === null
+            ? $base
+            : "{$base} Cada talla nace con {$inicial} unidades de stock inicial.";
     }
 
     /**

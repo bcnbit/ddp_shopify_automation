@@ -88,6 +88,24 @@ class AddSizeVariantsButtonTest extends TestCase
         );
     }
 
+    public function test_el_boton_deja_cinco_unidades_de_stock_a_cada_talla(): void
+    {
+        $operadora = $this->operadora();
+        $product = $this->productFor($operadora);
+
+        $this->variantsTable($product, $operadora)
+            ->callTableAction('addSizes')
+            ->assertHasNoTableActionErrors();
+
+        // El flujo completo (botón → servicio → base de datos) deja el stock de
+        // arranque puesto, que es lo que se pidió.
+        $this->assertSame(5, $product->variants()->count());
+        $this->assertSame(
+            [5, 5, 5, 5, 5],
+            $product->variants()->orderBy('position')->pluck('inventory_quantity')->all(),
+        );
+    }
+
     public function test_el_boton_no_falla_si_las_tallas_ya_existen(): void
     {
         $operadora = $this->operadora();
