@@ -8,12 +8,13 @@ lo que hace hoy la aplicación, la **6** mapea el código, y la **12** lista los
 donde ampliarla.
 
 - **Repositorio:** `D:\laragon\www\ddpshopify`
-- **Fecha:** 2026-09-17
+- **Fecha:** 2026-09-19
 - **Acceso local:** http://ddpshopify.test/admin
-- **Suite:** `360 passed (814 assertions)`
-- **Rama:** `main`, sincronizada con `origin/main`
-- **Último commit:** `f676a23 Update con publicación en Shopify`
-- **Árbol de trabajo:** solo `handoff.md` modificado (esta actualización), pendiente de commit
+- **Acceso producción:** https://ddpshp.diesdeplatja.com/admin
+- **Suite:** `572 passed (1427 assertions)`
+- **Rama:** `main`
+- **Último commit:** `c68a534 update`
+- **Árbol de trabajo:** 3 ficheros modificados sin commitear (el diagnóstico de CORS), ver §15
 
 ---
 
@@ -149,11 +150,15 @@ imágenes apuntaban a `localhost:8000` y salían rotas.
 | RFC-0008 | Mantenimientos de ficha técnica | **Implementado** (`docs/rfc/RFC-0008-…`) |
 | RFC-0009 | Conexión con Shopify por OAuth | **Implementado** (`docs/implementation/RFC-0009.md`) |
 | RFC-0005 | Medios, variantes y validaciones | Parcial (dentro de RFC-0001/0002) |
-| RFC-0006 | Pruebas y aceptación | No iniciado |
-| RFC-0007 | Despliegue y observabilidad | No iniciado |
+| RFC-0006 | Pruebas y aceptación | Parcial (suite extensa; sin doc de fase) |
+| RFC-0007 | Despliegue y observabilidad | **Implementado** (desarrollado en RFC-0010) |
+| RFC-0010 | Despliegue en producción (concreto) | **Implementado** (S3 y CORS, ver §15) |
 
 Falta solo: el **job de publicación** (que el propio RFC-0004 sitúa fuera del MVP) y los
 documentos de fase de RFC-0002 y RFC-0003.
+
+**Sobre los números de RFC:** el orden de escritura no coincide con el de numeración
+(RFC-0008/0009/0010 se escribieron antes de cerrar RFC-0005/0006/0007). No es un error.
 ---
 
 ## 5. Inventario de funcionalidades
@@ -234,6 +239,30 @@ php artisan shopify:sync DDP-14666               # enviar como borrador
 
 `shopify:sync` existe porque el panel **encola**, y en local sin worker el trabajo se queda
 en la tabla `jobs`. Ejecuta el **mismo servicio** que el job, no una vía alternativa.
+
+#### `storage:check` (RFC-0007/0010)
+
+El equivalente de `shopify:check` para el almacenamiento. Escribe, lee, firma y borra un
+objeto de prueba en `healthcheck/`, **siempre lo limpia** y nunca imprime credenciales.
+
+Con el disco temporal en S3 comprueba además lo que hace el **navegador** al subir, que es un
+camino distinto del de Flysystem:
+
+1. **Firma** una URL igual que Livewire.
+2. **Simula el preflight CORS** (`OPTIONS`) **desde el servidor** y comprueba que el bucket
+   devuelva `Access-Control-Allow-Origin`. Sin esa cabecera el navegador bloquea la subida
+   **antes de enviarla** y el servidor no registra nada: es el fallo que más cuesta diagnosticar
+   porque el panel sólo dice «failed to upload».
+3. Envía un **`PUT` firmado** idéntico al del navegador (con `x-amz-acl`, sin `Host`) y
+   borra el objeto. Detecta el segundo fallo posible: `AccessControlListNotSupported` cuando
+   el bucket tiene las ACL deshabilitadas.
+
+Si falta la política CORS, **imprime el JSON exacto** que hay que pegar en el bucket.
+
+```bash
+php artisan storage:check                          # disco de originales + temporal + subida
+php artisan storage:check --disk=media-s3          # un disco concreto
+```
 
 ### 5.5 Seguridad y auditoría
 
@@ -444,7 +473,7 @@ php vendor\bin\pint
 
 ## 9. Pruebas
 
-- **Suite completa: `360 passed (814 assertions)`** (al inicio de la sesión: 305 / 670).
+- **Suite completa: `572 passed (1427 assertions)`** (al inicio del proyecto: 305 / 670).
 - `ShopifyGatewayTest` — **17 pruebas**: contrato del conector (HTTP falso).
 - `ProductSyncServiceTest` — **23 pruebas**: orquestación (gateway falso).
 - `ShopifyCommandsTest` — **13 pruebas**: comandos de consola.
@@ -475,10 +504,15 @@ al añadir reglas de negocio nuevas.**
 
 ### Anomalía conocida (benigna, sin resolver)
 
-Una prueba de la suite tarda **~15,1 s**. Se acotó a la **primera llamada a
-`Storage::fake()`** del proceso. Es **dependiente de la posición**, no de la prueba, y en
-aislamiento tarda 0,7 s. Hipótesis: arranque en frío del proceso en Windows (antivirus /
-primera E/S). No afecta a la corrección, pero conviene entenderlo antes de montar CI.
+Una prueba de la suite tarda **~15,1 s**: `test_explica_el_rechazo_por_acl_deshabilitadas`.
+En aislamiento tarda 0,6 s.
+
+**Diagnóstico verificado (2026-09-19):** el tiempo está en el `delete()` del disco falso
+(`Storage::fake()`) dentro del `finally` de `probe()`, **no** en el comando: instrumentado
+paso a paso, el `handle()` completo tarda milisegundos. El propio `delete()` es rápido
+(0,001 s) en aislamiento, así que depende del estado acumulado de la clase de pruebas, no del
+código de producción. No afecta a la corrección (la prueba pasa), sólo al tiempo de la suite.
+Pendiente antes de montar CI.
 
 ---
 
@@ -610,6 +644,9 @@ Encaja en RFC-0005.
   documentación vigente, como se hizo con `productSet`.
 - **Reordenado de imágenes:** la prueba cubre el servicio, no el gesto de arrastrar.
 - **Sin CI:** no hay pipeline. El primer paso sería el `15 s` de §9.
+- **Comprobación pendiente con archivo real:** la migración a S3 y el diagnóstico están hechos y
+  el CORS está aplicado, pero falta subir una imagen **grande de verdad** (>12 MB, donde antes
+  fallaba) desde el panel de producción y confirmar que aparece con su miniatura.
 - **`README.md` raíz:** desactualizado (dice que RFC-0002/0003/0004 están pendientes).
 
 ### 12.5 Pendientes menores
@@ -617,6 +654,8 @@ Encaja en RFC-0005.
 - [ ] Documentos de fase `docs/implementation/RFC-0002.md` y `RFC-0003.md`.
 - [ ] Actualizar `README.md`.
 - [ ] Los 3 avisos de la generación de `DDP-TS-03` siguen sin resolver (fotos equivocadas).
+- [ ] Commitear los 3 ficheros de §15 (diagnóstico de CORS), hoy sin commitear.
+- [ ] Comprobar en producción la subida de una imagen grande (§12.4).
 
 ---
 
@@ -652,3 +691,105 @@ continuar. Después añadió:
    aprobación entre fases.
 3. Que el envío a Shopify se haga **como borrador** en la tienda.
 4. Actualmente revisa funcionalidades y **planifica implementar nuevas próximamente**.
+
+---
+
+## 15. Sesión 2026-09-19: imágenes en S3 y CORS
+
+### El problema
+
+Subir una imagen en producción fallaba con «failed to upload» y, después, «Validation Failed».
+El archivo no llegaba a subirse.
+
+### Las tres causas, en orden
+
+1. **El disco temporal de Livewire seguía siendo local.** Los originales ya se configuraban en
+   S3, pero la **subida** la hace el disco temporal: faltaba `LIVEWIRE_TEMPORARY_UPLOAD_DISK=s3`.
+   Sin él, el archivo pasa por PHP y sufre `post_max_size`.
+2. **Los límites de Livewire no coincidían con los de la aplicación.** Livewire validaba 12 MB
+   mientras la app acepta 20 MB: subir entre esos dos números daba un fallo sin explicación.
+   Ahora `config/livewire.php` deriva las reglas de `product-studio.media`, de modo que hay
+   una sola cifra.
+3. **El bucket no tenía política CORS** (confirmado por el usuario al aplicarla). Es la causa del
+   error que cierra esta sesión, y **no se arregla desde el código**.
+
+### Por qué el CORS era invisible
+
+Con el disco temporal en S3, la subida **la ejecuta el navegador** contra el bucket. La firma de
+Livewire incluye `x-amz-acl`, así que no es una petición simple y el navegador lanza un
+`OPTIONS` (preflight) antes. Sin política CORS el navegador **bloquea la subida antes de
+enviarla**: el servidor no ve ninguna petición, no hay error en los logs y el panel sólo muestra
+el mensaje genérico. De ahí que se confundiera con un problema de credenciales o de permisos.
+
+### Comprobado durante el diagnóstico
+
+- La URL firmada **se generaba bien** (`X-Amz-Signature` presente, 900 s de validez): no era un
+  problema de firma.
+- La firma de Livewire envía, verificado con un cliente simulado:
+  `x-amz-acl=private`, `Content-Type` y `Host`, con `SignedHeaders=host;x-amz-acl`.
+  El navegador elimina `Host` antes de enviar (lo pone él), y Livewire hace lo mismo.
+- **La escritura del servidor también envía `x-amz-acl`** (Flysystem, `upload()`). Por eso, si
+  `storage:check` dice «Bucket OK», las ACL del bucket ya están habilitadas: el aviso de
+  `AccessControlListNotSupported` sólo puede aparecer en buckets con ACL deshabilitadas.
+
+### El arreglo (configuración del bucket, no del repositorio)
+
+Política CORS en *S3 → Permissions → Cross-origin resource sharing (CORS)*:
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://ddpshp.diesdeplatja.com"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["x-amz-acl", "content-type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3000
+  }
+]
+```
+
+`AllowedOrigins` debe incluir **cada origen** desde el que se sube (producción y, si se usa, el
+dominio local). Se comparan literalmente: una barra final de más no coincide.
+
+### Variables de entorno
+
+```env
+# Almacenamiento local vs. bucket
+FILESYSTEM_DISK=local
+PRODUCT_STUDIO_MEDIA_DISK=media-s3            # originales en el bucket
+PRODUCT_STUDIO_DERIVED_DISK=media-derived
+PRODUCT_STUDIO_MEDIA_DRIVER=local
+PRODUCT_STUDIO_DERIVED_DRIVER=local
+
+# Subida directa del navegador (la que quita el límite de PHP)
+LIVEWIRE_TEMPORARY_UPLOAD_DISK=s3
+LIVEWIRE_MAX_UPLOAD_TIME=15
+
+# Credenciales (nunca en Git)
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=eu-west-1
+AWS_BUCKET=                                   # subidas temporales
+AWS_BUCKET_MEDIA=                             # originales (puede ser el mismo)
+AWS_URL=
+AWS_TEMPORARY_URL=                            # sólo para un CDN delante del bucket
+AWS_ENDPOINT=                                 # sólo proveedores compatibles
+AWS_USE_PATH_STYLE_ENDPOINT=false
+```
+
+Las dos variables de bucket son intercambiables: cada disco prefiere la suya y acepta la otra.
+Ese fallback está en `config/filesystems.php` con `env('A') ?: env('B')` y **no** con
+`env('A', env('B'))`: una variable definida pero **vacía** (como las deja la plantilla)
+anularía el respaldo.
+
+### Ficheros de esta sesión
+
+| Fichero | Qué se hizo |
+|---|---|
+| `app/Console/Commands/CheckStorageConnection.php` | Añadido el diagnóstico de la subida del navegador: firma, preflight CORS y `PUT` firmado con borrado del objeto |
+| `tests/Feature/Media/CheckStorageConnectionTest.php` | 6 pruebas nuevas (14 en total) sobre CORS, ACL, redacción y limpieza |
+| `docs/rfc/RFC-0010-despliegue-en-produccion.md` | §13.8 nueva: CORS y ACL; §13.6 con el paso obligatorio |
+
+**Estado:** los tres ficheros están modificados y **sin commitear**. Suite: `572 passed`.
+
+

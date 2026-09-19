@@ -489,8 +489,12 @@ PRODUCT_STUDIO_MEDIA_DISK=media-s3
 LIVEWIRE_TEMPORARY_UPLOAD_DISK=s3
 ```
 
-4. `php artisan config:clear`.
-5. Antes de `config:cache`, recordar §4.6: con la caché activa `env()` no lee el
+4. **Aplicar la política CORS del bucket** (§13.8). Sin este paso la subida falla en el navegador
+   aunque todo lo demás esté bien, y es el fallo más difícil de diagnosticar porque no deja rastro.
+5. `php artisan config:clear`.
+6. `php artisan storage:check`: debe terminar en verde, incluidas «CORS» y «PUT firmado». Si el
+   bucket no tiene CORS, el propio comando imprime la política a pegar.
+7. Antes de `config:cache`, recordar §4.6: con la caché activa `env()` no lee el
    `.env`.
 
 **Para proveedores compatibles** (Cloudflare R2, Backblaze B2, MinIO) basta `AWS_ENDPOINT` y,
@@ -507,6 +511,46 @@ nueve pruebas que simulan un archivo **sin ruta local** y verifican el hash, las
 duplicados y la firma de la URL. El doble imita lo que hace Livewire con un archivo en S3
 (`getRealPath()` devuelve una ruta inexistente y el guardado va por flujo), no un disco local
 disfrazado.
+
+### 13.8 CORS: el paso que no está en el código
+
+Con el disco temporal en S3, la subida **la ejecuta el navegador** contra el bucket, no el servidor. Y no
+es una petición simple: lleva la cabecera `x-amz-acl`, así que el navegador lanza antes un
+`OPTIONS` (preflight) que S3 sólo responde correctamente si el bucket tiene una **política CORS**.
+
+Sin esa política el navegador bloquea la subida **antes de enviarla** y muestra el mensaje genérico
+«failed to upload». Es un fallo que no deja rastro en el servidor, porque la petición nunca llega.
+
+**La política debe permitir el `PUT` y la cabecera `x-amz-acl`, y declarar el origen del panel.**
+En la consola de S3: *Permissions -> Cross-origin resource sharing (CORS) -> Edit*.
+
+```json
+[
+  {
+    "AllowedOrigins": ["https://ddpshp.diesdeplatja.com"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["x-amz-acl", "content-type"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3000
+  }
+]
+```
+
+`AllowedOrigins` debe listar **cada origen desde el que se sube** (producción y, si se usa, el
+dominio local). Los orígenes se comparan literalmente: `https://panel.test` y
+`https://panel.test/` no son equivalentes, y un origen que falte se comporta como si no hubiera
+política.
+
+**Segundo aviso: las ACL.** Livewire firma la subida con `ACL => private`, y un bucket con las ACL
+**deshabilitadas** (el ajuste por defecto de los buckets nuevos) rechaza cualquier ACL explícita con
+`AccessControlListNotSupported`. Ocurre **después** de resolver CORS, así que si la subida sigue
+fallando con el preflight ya correcto, la causa es ésta: hay que habilitar las ACL del bucket o dejar la
+firma sin ACL. La escritura del servidor usa la misma cabecera, así que si el diagnóstico dice «Bucket
+OK», las ACL ya están habilitadas.
+
+`php artisan storage:check` comprueba las dos cosas: simula el preflight desde el servidor, envía un
+`PUT` firmado igual al del navegador, borra el objeto de prueba y, si el bucket no tiene CORS,
+imprime la política exacta que hay que pegar.
 
 ## 13. Trabajo pendiente que esta RFC deja escrito
 
@@ -533,3 +577,9 @@ Ordenado por relación riesgo/esfuerzo. Nada de esto se implementa aquí:
 4. **Observabilidad y alertas** de RFC-0007.
 5. **Policy de retención de `sync_attempts`** y de logs.
 6. **CI** que ejecute `pint --test` y la suite antes de permitir el despliegue.
+7. **Una prueba lenta de `CheckStorageConnectionTest`** (`test_explica_el_rechazo_por_acl_deshabilitadas`):
+   cuando se ejecuta la clase completa tarda ~15 s, y aislada ~0,6 s. La causa está acotada al
+   `delete()` del disco falso (`Storage::fake()`) dentro del `finally` de `probe()`, no
+   al código de producción: el comando en sí tarda milisegundos. No se ha resuelto para no tocar el
+   comando por un problema del entorno de pruebas. No afecta al resultado (pasa), sólo al tiempo de
+   la suite.
