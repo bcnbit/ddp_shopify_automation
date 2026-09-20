@@ -6,16 +6,6 @@ namespace App\Support\Ai;
 
 use App\Enums\ProductType;
 
-/**
- * Perfil de contenido versionado por familia de producto (RFC-0003).
- *
- * Aporta las instrucciones, la estructura HTML esperada y las reglas de tags.
- * La persona puede elegir el perfil, pero **no** editar los prompts desde el
- * flujo operativo: los prompts son código revisable y versionado.
- *
- * La versión forma parte de la identidad porque RFC-0003 exige guardar la
- * versión de prompt usada en cada generación.
- */
 final readonly class ContentProfile
 {
     /**
@@ -73,19 +63,26 @@ final readonly class ContentProfile
     {
         return new self(
             key: 'generico',
-            version: 'v1',
+            version: 'v2',
             label: 'Prenda estándar',
-            structure: '<p>beneficio</p><p>diseño y uso</p><h2>Cuidado</h2><p>cuidado</p>',
+            structure: '<p>apertura comercial</p><p>diseño y uso</p><h2>Detalles confirmados</h2><p>información técnica, sólo si existe</p><h2>Cuidados</h2><p>cuidados, sólo si existen</p>',
             instructions: [
-                'Escribe en castellano, con tono cercano, concreto y sin promesas exageradas.',
-                'Estructura: beneficio, diseño o uso, y cuidado.',
+                'Escribe en castellano de España, con un tono cercano, claro y comercial, sin exageraciones.',
+                'Abre con una frase concreta sobre el diseño, el mensaje, el estilo o el uso real del producto; evita expresiones genéricas.',
+                'Explica después cómo encaja en un uso cotidiano o en una ocasión concreta sólo si ese uso está respaldado por los datos o la descripción base.',
+                'Incluye encabezados técnicos y de cuidados únicamente cuando existan datos confirmados para completarlos.',
+                'La descripción base aporta contexto creativo o comercial: úsala para orientar la redacción, pero no la copies literalmente ni conviertas suposiciones en características.',
                 'No incluyas ninguna afirmación que no aparezca en los datos confirmados.',
+                'No uses emojis, hashtags, llamadas a la acción agresivas ni repitas palabras clave de forma artificial.',
             ],
             tagRules: [
-                'Entre 5 y 12 etiquetas.',
-                'Separa tipo, color, colección, público y atributo confirmado.',
+                'Genera entre 5 y 10 etiquetas útiles para filtros, colecciones y organización interna.',
+                'Incluye tipo, color, colección, público y atributos sólo cuando estén confirmados.',
+                'Usa etiquetas cortas, en minúsculas, sin hashtags y sin duplicados.',
                 'No repitas sinónimos ni añadas etiquetas genéricas de relleno.',
             ],
+            minWords: 70,
+            maxWords: 140,
         );
     }
 
@@ -93,20 +90,30 @@ final readonly class ContentProfile
     {
         return new self(
             key: ProductType::Tshirt->value,
-            version: 'v1',
+            version: 'v2',
             label: 'Camiseta',
-            structure: '<p>beneficio</p><p>diseño y uso</p><h2>Tejido y tallaje</h2><p>tejido</p><h2>Cuidado</h2><p>cuidado</p>',
+            structure: '<p>apertura comercial</p><p>diseño y uso</p><h2>Composición y ajuste</h2><p>datos técnicos confirmados, sólo si existen</p><h2>Cuidados</h2><p>cuidados confirmados, sólo si existen</p>',
             instructions: [
-                'Escribe en castellano, con tono cercano y concreto.',
-                'Estructura: beneficio principal, diseño y uso cotidiano, tejido y tallaje, cuidado.',
-                'Menciona el tejido y el tallaje SÓLO si constan en los datos confirmados.',
-                'No uses "unisex" ni "oversize" salvo que aparezcan como dato confirmado.',
+                'Escribe en castellano de España, con tono cercano, concreto y comercial, sin exageraciones.',
+                'Abre con una frase específica sobre el diseño, mensaje, estilo o uso de la camiseta; no empieces con "una camiseta imprescindible" ni fórmulas equivalentes.',
+                'Describe el diseño de forma visual y explica cómo encaja en un look o uso cotidiano real.',
+                'Incluye "Composición y ajuste" sólo cuando haya composición, ajuste o tallaje confirmados.',
+                'Incluye "Cuidados" sólo cuando existan cuidados confirmados.',
+                'Menciona composición, ajuste y tallaje sólo si constan en los datos confirmados o en el mantenimiento técnico seleccionado.',
+                'No uses "unisex", "oversize", "algodón orgánico", "hecho en España" o expresiones equivalentes salvo que sean datos confirmados.',
+                'No inventes gramaje, certificaciones, origen, tipo de estampado, medidas, disponibilidad ni plazo de envío.',
+                'La descripción base puede orientar el tono y el contexto, pero no debe copiarse literalmente ni tratarse como dato técnico.',
+                'No uses emojis, hashtags, llamadas a la acción agresivas ni repetición artificial de palabras clave.',
             ],
             tagRules: [
-                'Entre 5 y 12 etiquetas.',
-                'Incluye tipo (camiseta), color, colección y atributo confirmado.',
-                'No añadas "regalo" ni "tendencia": no aportan búsqueda real.',
+                'Genera entre 5 y 10 etiquetas útiles para filtros, colecciones y organización interna.',
+                'Incluye "camiseta" y el público sólo si están confirmados.',
+                'Incluye color, colección, estilo, temática o técnica de personalización sólo si están confirmados.',
+                'Usa etiquetas cortas, en minúsculas, sin hashtags y sin duplicados.',
+                'No añadas "regalo", "tendencia", "novedad", "calidad" o etiquetas genéricas de relleno.',
             ],
+            minWords: 90,
+            maxWords: 150,
         );
     }
 
@@ -114,19 +121,27 @@ final readonly class ContentProfile
     {
         return new self(
             key: ProductType::Hoodie->value,
-            version: 'v1',
+            version: 'v2',
             label: 'Sudadera',
-            structure: '<p>beneficio</p><p>diseño y uso</p><h2>Tejido y tallaje</h2><p>tejido</p><h2>Cuidado</h2><p>cuidado</p>',
+            structure: '<p>apertura comercial</p><p>diseño y uso</p><h2>Composición y ajuste</h2><p>datos técnicos confirmados, sólo si existen</p><h2>Cuidados</h2><p>cuidados confirmados, sólo si existen</p>',
             instructions: [
-                'Escribe en castellano, destacando abrigo y comodidad sin exagerar.',
-                'Estructura: beneficio, diseño y uso, tejido y tallaje, cuidado.',
-                'No afirmes gramaje, forro ni composición si no constan como dato confirmado.',
+                'Escribe en castellano de España, con tono cercano, concreto y comercial, sin exageraciones.',
+                'Abre con una frase específica sobre el diseño, mensaje, estilo o uso de la sudadera; evita fórmulas vacías como "un básico imprescindible".',
+                'Describe el diseño y su uso real. Sólo destaca abrigo, suavidad o comodidad cuando esos atributos estén confirmados.',
+                'Incluye "Composición y ajuste" sólo cuando haya composición, ajuste o tallaje confirmados.',
+                'Incluye "Cuidados" sólo cuando existan cuidados confirmados.',
+                'No afirmes gramaje, forro, felpa, composición, origen o certificaciones si no constan como datos confirmados.',
+                'La descripción base puede orientar el tono y el contexto, pero no debe copiarse literalmente ni tratarse como dato técnico.',
+                'No uses emojis, hashtags, llamadas a la acción agresivas ni repetición artificial de palabras clave.',
             ],
             tagRules: [
-                'Entre 5 y 12 etiquetas.',
-                'Incluye tipo (sudadera), color, colección y atributo confirmado.',
-                'Evita adjetivos promocionales que no describan el producto.',
+                'Genera entre 5 y 10 etiquetas útiles para filtros, colecciones y organización interna.',
+                'Incluye "sudadera", color, colección, público, ajuste y atributo técnico sólo cuando estén confirmados.',
+                'Usa etiquetas cortas, en minúsculas, sin hashtags y sin duplicados.',
+                'Evita adjetivos promocionales y etiquetas genéricas que no describan el producto.',
             ],
+            minWords: 90,
+            maxWords: 160,
         );
     }
 
@@ -134,18 +149,27 @@ final readonly class ContentProfile
     {
         return new self(
             key: ProductType::Bag->value,
-            version: 'v1',
+            version: 'v2',
             label: 'Bolso o neceser',
-            structure: '<p>beneficio</p><p>diseño y uso</p><h2>Material y medidas</h2><p>material</p><h2>Cuidado</h2><p>cuidado</p>',
+            structure: '<p>apertura comercial</p><p>diseño y uso</p><h2>Material y detalles</h2><p>material, medidas o características confirmadas, sólo si existen</p><h2>Cuidados</h2><p>cuidados confirmados, sólo si existen</p>',
             instructions: [
-                'Escribe en castellano, describiendo uso y capacidad con honestidad.',
-                'Estructura: beneficio, diseño y uso, material y medidas, cuidado.',
-                'No inventes medidas, cierres, forro ni capacidad: sólo lo confirmado.',
+                'Escribe en castellano de España, describiendo uso y capacidad con honestidad.',
+                'Abre con una frase específica sobre el diseño, la utilidad o el contexto de uso del bolso o neceser.',
+                'Explica su uso cotidiano con precisión, sin sugerir capacidad, compartimentos o compatibilidades que no estén confirmados.',
+                'Incluye "Material y detalles" sólo cuando existan material, medidas, cierre, forro u otras características confirmadas.',
+                'Incluye "Cuidados" sólo cuando existan cuidados confirmados.',
+                'No inventes medidas, cierres, forro, capacidad, impermeabilidad ni resistencia: menciona sólo lo confirmado.',
+                'La descripción base puede orientar el tono y el contexto, pero no debe copiarse literalmente ni tratarse como dato técnico.',
+                'No uses emojis, hashtags, llamadas a la acción agresivas ni repetición artificial de palabras clave.',
             ],
             tagRules: [
-                'Entre 5 y 12 etiquetas.',
-                'Incluye tipo (bolso o neceser), material confirmado, color y colección.',
+                'Genera entre 5 y 10 etiquetas útiles para filtros, colecciones y organización interna.',
+                'Incluye tipo, material, color, colección, cierre o uso sólo cuando estén confirmados.',
+                'Usa etiquetas cortas, en minúsculas, sin hashtags y sin duplicados.',
+                'No uses etiquetas promocionales o genéricas como "regalo", "tendencia" o "calidad".',
             ],
+            minWords: 80,
+            maxWords: 140,
         );
     }
 
@@ -153,20 +177,28 @@ final readonly class ContentProfile
     {
         return new self(
             key: ProductType::Kids->value,
-            version: 'v1',
+            version: 'v2',
             label: 'Prenda infantil',
-            structure: '<p>beneficio</p><p>diseño y uso</p><h2>Tejido y tallaje</h2><p>tejido</p><h2>Cuidado</h2><p>cuidado</p>',
+            structure: '<p>apertura comercial</p><p>diseño y uso</p><h2>Composición y tallaje</h2><p>datos técnicos confirmados, sólo si existen</p><h2>Cuidados</h2><p>cuidados confirmados, sólo si existen</p>',
             instructions: [
-                'Escribe en castellano, pensando en quien compra para un niño o una niña.',
-                'Estructura: beneficio, diseño y uso, tejido y tallaje, cuidado.',
-                'No afirmes seguridad, hipoalergenicidad ni certificados si no constan.',
+                'Escribe en castellano de España, pensando en la persona adulta que compra para un niño o una niña.',
+                'Abre con una frase específica sobre el diseño, mensaje, estilo o situación de uso de la prenda.',
+                'Describe el producto de forma práctica y clara, sin infantilizar el lenguaje ni hacer promesas sobre comodidad o resistencia si no están confirmadas.',
+                'Incluye "Composición y tallaje" sólo cuando haya composición, ajuste o tallaje confirmados.',
+                'Incluye "Cuidados" sólo cuando existan cuidados confirmados.',
+                'No afirmes seguridad, hipoalergenicidad, protección solar, sostenibilidad, certificados o resistencia si no constan como datos confirmados.',
                 'No uses "unisex" salvo que sea un dato confirmado.',
+                'La descripción base puede orientar el tono y el contexto, pero no debe copiarse literalmente ni tratarse como dato técnico.',
+                'No uses emojis, hashtags, llamadas a la acción agresivas ni repetición artificial de palabras clave.',
             ],
             tagRules: [
-                'Entre 5 y 12 etiquetas.',
-                'Incluye tipo, color, talla si consta y colección.',
-                'No añadas etiquetas de "seguridad" ni "ecológico" sin dato confirmado.',
+                'Genera entre 5 y 10 etiquetas útiles para filtros, colecciones y organización interna.',
+                'Incluye tipo, color, franja de edad, público y colección sólo cuando estén confirmados.',
+                'Usa etiquetas cortas, en minúsculas, sin hashtags y sin duplicados.',
+                'No añadas etiquetas de "seguridad", "ecológico", "orgánico" o similares sin dato confirmado.',
             ],
+            minWords: 80,
+            maxWords: 150,
         );
     }
 }

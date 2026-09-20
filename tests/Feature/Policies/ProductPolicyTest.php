@@ -118,12 +118,20 @@ class ProductPolicyTest extends TestCase
         $this->assertFalse($admin->can('approve', $product));
     }
 
-    public function test_no_se_elimina_una_ficha_ya_sincronizada(): void
+    /**
+     * Sí se puede eliminar una ficha ya sincronizada, y es una decisión deliberada.
+     *
+     * Borrar aquí **no toca Shopify**: sólo desvincula la copia local (ver
+     * `ProductService::delete`). La regla contraria existía para no perder el
+     * vínculo con la tienda; cuando lo que se pide es justo romperlo, esa
+     * protección sobra. Archivar sigue siendo la vía para conservarlo.
+     */
+    public function test_se_elimina_una_ficha_ya_sincronizada_sin_tocar_shopify(): void
     {
         $admin = $this->admin();
         $product = Product::factory()->syncedToShopify()->create();
 
-        $this->assertFalse($admin->can('delete', $product));
+        $this->assertTrue($admin->can('delete', $product));
     }
 
     public function test_se_puede_eliminar_una_ficha_local_sin_sincronizar(): void

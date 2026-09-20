@@ -11,11 +11,11 @@ donde ampliarla.
 - **Fecha:** 2026-09-19
 - **Acceso local:** http://ddpshopify.test/admin
 - **Acceso producción:** https://ddpshp.diesdeplatja.com/admin
-- **Suite:** `589 passed (1460 assertions)`
+- **Suite:** `599 passed (1491 assertions)`
 - **Rama:** `main`
 - **Último commit:** `88c5ec0 update problemas conexión s3`
-- **Árbol de trabajo:** limpio respecto a los commits anteriores; pendiente de commitear el
-  trabajo de §16 (stock inicial) y §17 (`File URL is invalid` + trazabilidad).
+- **Árbol de trabajo:** pendiente de commitear §18 (borrado de fichas). §16 (stock inicial) y
+  §17 (`File URL is invalid` + trazabilidad) ya están commiteados en `61d7a43` y `fa98e41`.
 
 ---
 
@@ -502,7 +502,7 @@ php vendor\bin\pint
 
 ## 9. Pruebas
 
-- **Suite completa: `589 passed (1460 assertions)`** (al inicio del proyecto: 305 / 670).
+- **Suite completa: `599 passed (1491 assertions)`** (al inicio del proyecto: 305 / 670).
 - `ShopifyGatewayTest` — **19 pruebas**: contrato del conector (HTTP falso).
 - `ProductSyncServiceTest` — **23 pruebas**: orquestación (gateway falso).
 - `ShopifyCommandsTest` — **13 pruebas**: comandos de consola.
@@ -704,7 +704,10 @@ Encaja en RFC-0005.
   publicar ni aunque invoque la acción directamente por HTTP.
 - **`Permission::byRole()`** es la única fuente de verdad de los permisos.
 - **El estado `DRAFT` se fija en el gateway**, no se recibe como parámetro.
-- **Los originales de medios nunca se borran**; los derivados son regenerables.
+- **Los originales de medios no se borran al quitar una imagen de una ficha** (RFC-0000);
+  los derivados son regenerables. **Matiz del 2026-09-19 (ver §18):** al **eliminar la ficha
+  entera** sí se borran el original y su derivado, porque la persona está eliminando el
+  registro completo y dejar los archivos sería basura acumulada en el bucket.
 - **`sha256` es la identidad del archivo**: evita duplicados y re-subidas.
 - **El reintento continúa, no reinicia**: reutiliza los GID ya guardados.
 - **La IA no aprueba nada**: solo propone; una persona revisa campo a campo.
@@ -879,7 +882,7 @@ de stock por defecto.
 | `docs/rfc/RFC-0005…`, `docs/rfc/RFC-0008…` | La regla «no se inventa stock» se matiza con esta excepción acotada |
 
 **Pruebas:** se verificó reintroduciendo el bug a mano (quitar la asignación): **3 pruebas
-fallan** sin ella, como exige §9. Suite: `589 passed (1460 assertions)`.
+fallan** sin ella, como exige §9. Suite: `599 passed (1491 assertions)`.
 
 ---
 
@@ -961,12 +964,81 @@ Ahora:
 
 **Pruebas:** se verificó reintroduciendo los dos bugs a mano (el `originalSource` y quitar el
 guardado de la petición): **1 y 2 pruebas fallan** respectivamente sin sus arreglos, como
-exige §9. Suite: `589 passed (1460 assertions)`.
+exige §9. Suite: `599 passed (1491 assertions)`.
 
 ### Pendiente de confirmar
 
 El arreglo está probado contra un doble de HTTP, no contra la API real: **falta un envío real
 en producción** con una ficha con imágenes. Si volviera a fallar, ahora el panel dirá
 exactamente qué se envió.
+
+---
+
+## 18. Sesión 2026-09-19 (4): eliminar fichas de la aplicación
+
+### Qué se pidió
+
+Poder **eliminar fichas ficha a ficha** desde el listado, borrando también sus ficheros de S3,
+**sin tocar Shopify**. Nada de borrado en masa.
+
+### Qué se hizo
+
+- `ProductService::delete()`: borra las filas (los hijos caen por `cascadeOnDelete`) y, después,
+  los ficheros del disco. Devuelve `{media_files, media_failed}` para poder avisar.
+- `ProductMediaService::purgeFiles()`: borra el **original y su derivado**. El derivado se busca
+  por convención (misma ruta relativa en el disco `media-derived`).
+- `DeleteProductAction`, compartida por el listado y la ficha, para que las dos pantallas no
+  diverjan. El diálogo dice explícitamente que **no se toca Shopify**.
+- El borrado en masa (`DeleteBulkAction`) **se retira** del listado: es una decisión, no un
+  olvido. Borrar arrastra ficheros del bucket y no debe poder hacerse de un clic sobre una
+  selección entera por error.
+
+### Decisiones que conviene no revertir sin querer
+
+- **Los ficheros se borran después de confirmar la transacción.** Al revés, un rollback dejaría
+  las filas intactas apuntando a archivos ya borrados, que es peor que un archivo huérfano: la
+  ficha parecería correcta y sus imágenes estarían rotas.
+- **Un fallo al borrar un archivo no interrumpe.** Se registra en el log y se cuenta en
+  `media_failed`, y el panel avisa. Negarse a borrar una ficha porque el bucket no responde
+  dejaría a la persona sin salida.
+- **`purgeFiles()` distingue «no había nada» de «no se pudo borrar».** Un derivado sin generar
+  no es un error —hoy no hay código que los genere—; contarlo como tal haría desconfiar de un
+  borrado correcto.
+- **El GID remoto se guarda en la auditoría antes de borrar.** Después ya no hay dónde
+  consultarlo, y es el único rastro para localizar el producto en Shopify.
+
+### Dos reglas documentadas que se han matizado
+
+1. **«Los originales de medios nunca se borran»** (RFC-0000, §13 de este documento). Se mantiene
+   al quitar **una imagen** de una ficha; se exceptúa al eliminar **la ficha entera**, que es lo
+   que se pidió. Los dos documentos quedan actualizados.
+2. **«Una ficha ya sincronizada no se borra localmente, primero se archiva»**
+   (`ProductPolicy::delete`). Esa regla protegía el vínculo con Shopify; aquí la persona pide
+   explícitamente romperlo, así que `delete` ya no la aplica. **Archivar sigue siendo la vía para
+   conservar el vínculo**, y el diálogo lo recuerda cuando la ficha está en Shopify.
+
+### Ficheros
+
+| Fichero | Qué se hizo |
+|---|---|
+| `app/Services/Products/ProductService.php` | `delete()`: borra filas, ficheros y deja el rastro en auditoría |
+| `app/Services/Products/ProductMediaService.php` | `purgeFiles()`: original + derivado, tolerante a fallos |
+| `app/Filament/…/Actions/DeleteProductAction.php` | Acción compartida, con aviso explícito de que no toca Shopify |
+| `app/Filament/…/Tables/ProductsTable.php` | Borrado por fila; se retira el borrado en masa |
+| `app/Filament/…/Pages/EditProduct.php` | Usa la acción compartida en lugar del `DeleteAction` genérico |
+| `app/Policies/ProductPolicy.php` | `delete` ya no bloquea las fichas sincronizadas |
+| `tests/Feature/Products/DeleteProductTest.php` | 6 pruebas del servicio |
+| `tests/Feature/Filament/DeleteProductActionTest.php` | 3 pruebas del panel |
+| `tests/Feature/Policies/ProductPolicyTest.php` | La prueba de la regla antigua se invierte, con el motivo |
+| `docs/rfc/RFC-0000…` | Se matiza «las fotos originales se conservan» |
+
+**Pruebas:** se verificó reintroduciendo el bug a mano (no llamar a `purgeFiles`): **2 pruebas
+fallan** sin el arreglo, como exige §9. Suite: `599 passed (1491 assertions)`.
+
+### Un detalle sobre la operadora
+
+La operadora **no puede eliminar fichas**: no tiene `products.delete` en `Permission::byRole()`.
+Quien borra es el responsable de catálogo y el administrador técnico. No es un fallo de esta
+función; se deja constancia porque es lo primero que se pregunta al probarlo.
 
 

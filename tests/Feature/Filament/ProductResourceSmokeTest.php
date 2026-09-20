@@ -33,6 +33,25 @@ class ProductResourceSmokeTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * El listado ofrece borrar ficha a ficha y no en masa.
+     *
+     * Borrar arrastra los ficheros del almacenamiento, así que no debe poder
+     * hacerse de un clic sobre una selección entera por error: es una decisión
+     * deliberada, no una funcionalidad que falte.
+     */
+    public function test_el_listado_no_ofrece_borrado_en_masa(): void
+    {
+        $operadora = $this->operadora();
+        Product::factory()->create(['created_by' => $operadora->getKey()]);
+
+        $html = $this->actingAs($operadora)->get('/admin/products')->assertOk()->getContent();
+
+        // `DeleteBulkAction` se pinta como acción de la barra superior; el borrado
+        // por fila es lo que sí debe existir.
+        $this->assertStringNotContainsString('deleteBulk', $html);
+    }
+
     public function test_la_operadora_abre_el_formulario_de_alta(): void
     {
         $this->actingAs($this->operadora())

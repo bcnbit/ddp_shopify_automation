@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\Audit\ActivityRecorder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -128,6 +129,80 @@ class ProductMediaService
 
             return true;
         });
+    }
+
+    /**
+     * Borra del disco los ficheros de un medio: el original y sus derivados.
+     *
+     * Se usa **sólo** cuando se elimina la ficha entera (ver `ProductService::delete`).
+     * Borrar una imagen suelta de una ficha sigue sin tocar el disco: ahí el original
+     * se conserva a propósito.
+     *
+     * El derivado se busca por convención —misma ruta relativa en el disco
+     * `media-derived`— porque hoy **no hay ningún código que los genere**
+     * (`config/media.php` los define pero nadie los escribe). Borrarlo igualmente
+     * deja el terreno limpio para cuando se implemente RFC-0005 y evita que un
+     * derivado huérfano sobreviva a su ficha.
+     *
+     * Un fallo al borrar **no** interrumpe: devuelve `false` y quien llama decide
+     * qué contar. Negarse a borrar una ficha porque el bucket no responde dejaría
+     * a la persona sin salida.
+     *
+     * @return array{deleted: int, failed: int}
+     */
+    public function purgeFiles(ProductMedia $media): array
+    {
+        $totals = ['deleted' => 0, 'failed' => 0];
+
+        $targets = [
+            [$media->disk, $media->path],
+            // El derivado conserva la ruta relativa del original dentro de su
+            // disco, así que sirve la misma `path`.
+            [(string) config('media.disks.derived', 'media-derived'), $media->path],
+        ];
+
+        foreach ($targets as [$disk, $path]) {
+            $result = $this->deleteFrom($disk, $path);
+
+            $totals['deleted'] += $result['deleted'];
+            $totals['failed'] += $result['failed'];
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Borra una ruta de un disco, tolerando que no exista o que el disco falle.
+     *
+     * Distingue «no había nada» de «no se pudo borrar»: de esa diferencia depende
+     * que el aviso del panel diga la verdad. Un derivado sin generar no es un
+     * error, y contarlo como tal haría desconfiar de un borrado correcto.
+     *
+     * @return array{deleted: int, failed: int}
+     */
+    private function deleteFrom(string $disk, string $path): array
+    {
+        try {
+            $storage = Storage::disk($disk);
+
+            if (! $storage->exists($path)) {
+                return ['deleted' => 0, 'failed' => 0];
+            }
+
+            return $storage->delete($path)
+                ? ['deleted' => 1, 'failed' => 0]
+                : ['deleted' => 0, 'failed' => 1];
+        } catch (\Throwable $exception) {
+            // El fallo queda en el log con la ruta exacta: sin esto, un borrado
+            // silencioso dejaría ficheros ocupando bucket sin que nadie lo sepa.
+            Log::warning('No se ha podido borrar un fichero de medios.', [
+                'disk' => $disk,
+                'path' => $path,
+                'reason' => $exception->getMessage(),
+            ]);
+
+            return ['deleted' => 0, 'failed' => 1];
+        }
     }
 
     /**

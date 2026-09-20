@@ -53,14 +53,19 @@ class ProductPolicy
         return $this->canSeeAll($user) || $this->owns($user, $product);
     }
 
+    /**
+     * Eliminar la ficha de la aplicación.
+     *
+     * **Sí se permite en fichas ya enviadas a Shopify**, y es deliberado: borrar
+     * aquí sólo desvincula la copia local y **no toca la tienda** (ver
+     * `ProductService::delete`). La regla anterior —«una ficha sincronizada no se
+     * borra localmente, primero se archiva»— existía para no perder el vínculo con
+     * Shopify; cuando lo que se pide es precisamente romperlo, esa protección
+     * sobra. Archivar sigue siendo la vía para conservar el vínculo.
+     */
     public function delete(User $user, Product $product): bool
     {
         if (! $this->allows($user, Permission::ProductsDelete)) {
-            return false;
-        }
-
-        // Una ficha ya sincronizada no se borra localmente: primero se archiva.
-        if ($product->isSyncedWithShopify()) {
             return false;
         }
 

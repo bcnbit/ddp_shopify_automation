@@ -31,7 +31,9 @@ No se permite pasar a `published` desde una ficha que no tenga una sincronizaci�
 ## Decisiones de producto
 
 - Idioma de contenido inicial: español (ES). Se almacenará preparado para CA/EN/FR en una fase posterior.
-- Las fotos originales se conservan; Shopify recibe una copia optimizada cuando corresponda.
+- Las fotos originales se conservan mientras la ficha exista; Shopify recibe una copia optimizada
+  cuando corresponda. Al **eliminar la ficha entera** desde el panel, sus archivos (original y
+  derivados) se borran del almacenamiento: ver `handoff.md` §18.
 - El sistema propone, el humano aprueba. La publicación automática queda expresamente fuera del MVP.
 - Los datos procedentes de IA se distinguen visualmente de los datos confirmados por una persona.
 

@@ -171,6 +171,71 @@ class ProductService
     }
 
     /**
+     * Elimina la ficha de la aplicación: filas **y** ficheros de los discos.
+     *
+     * **No toca Shopify.** El borrador remoto se queda donde está; esto sólo
+     * desvincula la copia local. Es una excepción deliberada a la regla «una ficha
+     * ya sincronizada no se borra localmente», que existía justo para no perder el
+     * vínculo con la tienda: aquí la persona pide explícitamente romperlo.
+     *
+     * Los GID remotos se guardan en la auditoría **antes** de borrar, porque
+     * después ya no hay dónde consultarlos y son el único rastro para localizar
+     * el producto en Shopify si hiciera falta.
+     *
+     * El borrado de los ficheros se hace **después** de confirmar la transacción:
+     * si el disco falla, no se pierden las filas ni queda una ficha a medias, y si
+     * la transacción revienta, los ficheros siguen ahí en lugar de quedar huérfanos
+     * sin fila que los referencie.
+     *
+     * @return array{media_files: int, media_failed: int} ficheros borrados y fallidos
+     */
+    public function delete(Product $product, User $author): array
+    {
+        // Se leen antes de borrar: el evento `deleted` de Eloquent ya no los tendría.
+        $reference = (string) $product->internal_reference;
+        $shopifyGid = $product->shopify_product_gid;
+        $media = $product->media()->get();
+
+        DB::transaction(function () use ($product, $author, $reference, $shopifyGid, $media): void {
+            $this->recorder->record(
+                ActivityEvent::Deleted,
+                $product,
+                "Ficha «{$reference}» eliminada de la aplicación.",
+                [
+                    'internal_reference' => $reference,
+                    // El rastro que permite encontrar el producto en Shopify.
+                    'shopify_product_gid' => $shopifyGid,
+                    'shopify_left_untouched' => $shopifyGid !== null,
+                    'media_count' => $media->count(),
+                ],
+                actor: $author,
+            );
+
+            // Las filas hijas caen por `cascadeOnDelete` (variantes, medios,
+            // contenido, intentos y copias de mantenimientos).
+            $product->delete();
+        });
+
+        // Los ficheros se borran **después** de confirmar la transacción. Al revés,
+        // un rollback dejaría las filas intactas apuntando a archivos ya borrados,
+        // que es peor que un archivo huérfano: la ficha parecería correcta y sus
+        // imágenes estarían rotas.
+        $stats = ['media_files' => 0, 'media_failed' => 0];
+        $service = app(ProductMediaService::class);
+
+        foreach ($media as $item) {
+            $purged = $service->purgeFiles($item);
+
+            // Se cuenta por ficheros, no por medios: cada medio puede aportar un
+            // original y un derivado.
+            $stats['media_files'] += $purged['deleted'];
+            $stats['media_failed'] += $purged['failed'];
+        }
+
+        return $stats;
+    }
+
+    /**
      * @param  array<string, mixed>  $attributes
      */
     public function update(Product $product, array $attributes, User $author): Product

@@ -7,9 +7,8 @@ namespace App\Filament\Resources\Products\Tables;
 use App\Enums\Audience;
 use App\Enums\ProductStatus;
 use App\Enums\ProductType;
+use App\Filament\Resources\Products\Actions\DeleteProductAction;
 use App\Models\Product;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Tables\Columns\IconColumn;
@@ -183,12 +182,12 @@ class ProductsTable
             ])
             ->recordActions([
                 EditAction::make()->label('Abrir'),
-            ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make()
-                        ->visible(fn (): bool => auth()->user()?->can('products.delete') === true),
-                ]),
+
+                // Ficha a ficha, no en masa: borrar arrastra los ficheros del
+                // almacenamiento y no debe poder hacerse de un clic sobre una
+                // selección entera por error.
+                DeleteProductAction::make()
+                    ->visible(fn (Product $record): bool => auth()->user()?->can('delete', $record) === true),
             ])
             ->emptyStateHeading('Todavía no hay fichas')
             ->emptyStateDescription('Crea la primera ficha para empezar a preparar productos.');

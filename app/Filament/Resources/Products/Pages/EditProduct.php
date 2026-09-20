@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\Products\Pages;
 
+use App\Filament\Resources\Products\Actions\DeleteProductAction;
 use App\Filament\Resources\Products\ProductResource;
 use App\Models\ProductMedia;
 use App\Services\Ai\ProductGenerationService;
@@ -14,7 +15,6 @@ use App\Services\Shopify\ProductSyncService;
 use App\Support\Ai\GenerationLimiter;
 use App\Support\Products\ProductReadiness;
 use Filament\Actions\Action;
-use Filament\Actions\DeleteAction;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
@@ -51,10 +51,8 @@ class EditProduct extends EditRecord
             $this->makeApproveAction(),
             $this->makeSendToShopifyAction(),
             $this->makeDownloadJsonAction(),
-            DeleteAction::make()
-                ->label('Eliminar ficha')
-                ->visible(fn (): bool => auth()->user()?->can('delete', $this->getRecord()) === true)
-                ->successNotificationTitle('Ficha eliminada'),
+            DeleteProductAction::make()
+                ->visible(fn (): bool => auth()->user()?->can('delete', $this->getRecord()) === true),
         ];
     }
 
