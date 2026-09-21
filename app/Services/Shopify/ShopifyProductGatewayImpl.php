@@ -27,6 +27,19 @@ use Illuminate\Support\Facades\Log;
  */
 class ShopifyProductGatewayImpl implements ShopifyProductGateway
 {
+    /**
+     * Par canónico con el que Shopify representa un producto sin opciones.
+     *
+     * Shopify no admite un producto sin ninguna opción: el «producto único»
+     * —RFC-0002 permite confirmar que la ficha no varía— se modela con una
+     * opción llamada «Title» y un valor «Default Title», que la tienda trata
+     * como la variante por defecto en lugar de como un selector visible. El
+     * nombre distingue mayúsculas: «Default title» no produce ese efecto.
+     */
+    private const DEFAULT_OPTION_NAME = 'Title';
+
+    private const DEFAULT_OPTION_VALUE = 'Default Title';
+
     public function __construct(
         private readonly ShopifyGraphQlClient $client,
         private readonly ShopifyFileUploader $uploader,
@@ -306,16 +319,15 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
             $input['seo'] = $seo;
         }
 
-        $options = $this->buildOptions($payload->variants);
-
-        if ($options !== []) {
-            $input['productOptions'] = $options;
-        }
-
         $variants = $this->buildVariants($payload->variants);
 
         if ($variants !== []) {
             $input['variants'] = $variants;
+            // Las opciones van junto a las variantes: Shopify exige que todo
+            // producto declare al menos una, y que `optionValues` de cada
+            // variante case con ellas. Enviarlas por separado permitía que la
+            // lista quedara vacía y la mutación se rechazara entera.
+            $input['productOptions'] = $this->buildOptions($payload->variants);
         }
 
         $files = $this->buildFiles($payload, $media);
@@ -350,6 +362,11 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
      *
      * Sin declarar las opciones, Shopify no sabe interpretar `optionValues` de
      * cada variante y las crea sueltas.
+     *
+     * Un producto sin ningún eje de variación —una sola variante vendible, que
+     * RFC-0002 permite confirmar— recibe el par por defecto en lugar de una lista
+     * vacía: Shopify exige una opción en todo producto, y omitirla hacía que la
+     * mutación rechazara la variante con «Expected value to not be null».
      *
      * @param  list<array<string, mixed>>  $variants
      * @return list<array<string, mixed>>
@@ -390,7 +407,7 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
             ];
         }
 
-        return $options;
+        return $options === [] ? [self::defaultOption()] : $options;
     }
 
     /**
@@ -404,11 +421,9 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
         foreach (array_values($variants) as $index => $variant) {
             $entry = [];
 
-            $optionValues = $this->optionValues($variant);
-
-            if ($optionValues !== []) {
-                $entry['optionValues'] = $optionValues;
-            }
+            // Siempre presente: la Admin API no admite `null` aquí y una
+            // variante sin opciones lleva el par por defecto.
+            $entry['optionValues'] = $this->optionValues($variant);
 
             if (filled($variant['sku'] ?? null)) {
                 $entry['sku'] = (string) $variant['sku'];
@@ -445,6 +460,16 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
     }
 
     /**
+     * Valores de opción de una variante.
+     *
+     * Nunca devuelve una lista vacía: una variante sin opciones recibe el par
+     * por defecto, porque la Admin API declara `optionValues` como obligatorio y
+     * no nulo, y omitirlo hace que Shopify rechace la mutación completa con
+     * «Expected value to not be null».
+     *
+     * Un eje declarado con el valor vacío —el color de las variantes de talla— se
+     * omite: es como la ficha representa «este producto no varía por color».
+     *
      * @param  array<string, mixed>  $variant
      * @return list<array{optionName: string, name: string}>
      */
@@ -463,7 +488,31 @@ class ShopifyProductGatewayImpl implements ShopifyProductGateway
             $values[] = ['optionName' => $name, 'name' => $value];
         }
 
-        return $values;
+        return $values === [] ? self::defaultOptionValues() : $values;
+    }
+
+    /**
+     * Opción por defecto de un producto sin ejes de variación.
+     *
+     * @return array<string, mixed>
+     */
+    private static function defaultOption(): array
+    {
+        return [
+            'name' => self::DEFAULT_OPTION_NAME,
+            'position' => 1,
+            'values' => [['name' => self::DEFAULT_OPTION_VALUE]],
+        ];
+    }
+
+    /**
+     * `optionValues` de una variante sin opciones.
+     *
+     * @return list<array{optionName: string, name: string}>
+     */
+    private static function defaultOptionValues(): array
+    {
+        return [['optionName' => self::DEFAULT_OPTION_NAME, 'name' => self::DEFAULT_OPTION_VALUE]];
     }
 
     /**

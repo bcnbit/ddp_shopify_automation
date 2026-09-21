@@ -95,6 +95,55 @@ class ShopifyGatewayTest extends TestCase
     }
 
     /**
+     * Una ficha con una sola variante y sin opciones —el «producto único» que
+     * RFC-0002 permite confirmar— se enviaba con `optionValues` ausente. La Admin
+     * API declara ese campo como obligatorio y no nulo, así que rechazaba la
+     * mutación entera con «Variable $input of type ProductSetInput! was provided
+     * invalid value for variants.0.optionValues (Expected value to not be null)».
+     *
+     * Shopify representa ese producto con la opción por defecto: el nombre debe ser
+     * exactamente «Title» y el valor «Default Title».
+     */
+    public function test_envia_la_opcion_por_defecto_en_una_variante_sin_opciones(): void
+    {
+        $product = $this->syncableProduct();
+
+        // Se deja la ficha con una única variante sin ejes: es el caso que fallaba.
+        $product->variants()->where('sku', 'DDP-1001-ROJO-L')->delete();
+
+        $variant = $product->variants()->firstOrFail();
+        $variant->update([
+            'option1_name' => '',
+            'option1_value' => '',
+            'option2_name' => '',
+            'option2_value' => '',
+            'sku' => 'DDP-1001',
+            'position' => 0,
+        ]);
+
+        $this->fakeShopify([
+            'ProductSet' => $this->productSetResponse(variants: [
+                ['sku' => 'DDP-1001', 'id' => 'gid://shopify/ProductVariant/111'],
+            ]),
+        ]);
+
+        $this->gateway()->createOrUpdateDraft(ShopifyProductPayload::fromProduct($product->refresh()));
+
+        Http::assertSent(function (Request $request): bool {
+            $input = $this->graphQlVariables($request)['input'] ?? [];
+
+            return ($input['variants'][0]['optionValues'] ?? null) === [
+                ['optionName' => 'Title', 'name' => 'Default Title'],
+            ]
+                && ($input['productOptions'] ?? null) === [[
+                    'name' => 'Title',
+                    'position' => 1,
+                    'values' => [['name' => 'Default Title']],
+                ]];
+        });
+    }
+
+    /**
      * Shopify numera las variantes desde 1 y rechaza cualquier posición fuera de
      * `1..N` con «Variant position must be between 1 and the number of variants on
      * the product». En local la posición arranca en 0, así que reenviarla tal cual
